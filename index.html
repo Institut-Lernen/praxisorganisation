@@ -328,7 +328,7 @@
             <option value="DYS">Dyskalkulie / Rechenschwäche</option>
           </select>
         </div>
-        <div><label>Klient:in (Name)</label><input name="klient" required></div>
+        <div><label>Klient:in (Name)</label><input name="klient" list="patientList" placeholder="aus Stammdaten oder Kürzel" required></div>
         <div><label>Geb.-Datum / Klasse</label><input name="gebKlasse"></div>
         <div><label>Sitzung Nr.</label><input name="sitzungNr" type="number" min="1"></div>
         <div><label>Datum</label><input name="datum" type="date" required></div>
@@ -435,9 +435,10 @@
       </details>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="reset" class="btn ghost">Zurücksetzen</button>
+        <button type="reset" class="btn ghost" id="dokuCancelEdit">Zurücksetzen / Neu</button>
         <button type="submit" class="btn">Dokumentation speichern</button>
       </div>
+      <input type="hidden" name="id">
     </form>
   </div>
 
@@ -982,11 +983,24 @@ document.getElementById('schwerpunkt').addEventListener('change', rebuildObs);
 const formD = document.getElementById('formDoku');
 formD.addEventListener('submit', e=>{
   e.preventDefault();
-  const o = dataFromForm(formD); o.id = uid();
-  state.dokus.unshift(o);
+  const o = dataFromForm(formD);
+  if(o.id){
+    state.dokus = state.dokus.map(d => d.id===o.id ? Object.assign({}, d, o) : d);
+    toast('Dokumentation aktualisiert');
+  } else {
+    o.id = uid();
+    state.dokus.unshift(o);
+    toast('Dokumentation gespeichert');
+  }
   save(); renderDokus();
-  formD.reset(); rebuildObs();
-  toast('Dokumentation gespeichert');
+  formD.reset();
+  formD.querySelector('[name=id]').value = '';
+  rebuildObs();
+});
+
+document.getElementById('dokuCancelEdit').addEventListener('click', ()=>{
+  formD.querySelector('[name=id]').value = '';
+  setTimeout(rebuildObs, 0);
 });
 
 function renderDokus(){
@@ -1000,15 +1014,47 @@ function renderDokus(){
       <td>${d.datum||''}</td><td>${d.klient||''}</td>
       <td><span class="pill">${d.schwerpunkt||''}</span></td>
       <td>${d.sitzungNr||''}</td><td>${d.therapeut||''}</td>
-      <td><button class="btn small ghost" data-del-doku="${d.id}">Löschen</button></td>`;
+      <td>
+        <button class="btn small ghost" data-edit-doku="${d.id}">Bearbeiten</button>
+        <button class="btn small ghost" data-del-doku="${d.id}">Löschen</button>
+      </td>`;
     tb.appendChild(tr);
   });
 }
 document.querySelector('#dokuTable').addEventListener('click', e=>{
-  const id = e.target.dataset.delDoku; if(!id) return;
-  if(confirm('Dokumentation löschen?')){
-    state.dokus = state.dokus.filter(x=>x.id!==id);
-    save(); renderDokus();
+  const editId = e.target.dataset.editDoku;
+  const delId = e.target.dataset.delDoku;
+  if(editId){
+    const d = state.dokus.find(x=>x.id===editId); if(!d) return;
+    formD.reset();
+    // Schwerpunkt zuerst setzen, damit das richtige Beobachtungsraster aufgebaut wird
+    if(d.schwerpunkt){
+      document.getElementById('schwerpunkt').value = d.schwerpunkt;
+    }
+    rebuildObs();
+    // Alle Felder befüllen (inkl. radios + checkboxes)
+    Object.entries(d).forEach(([k,v])=>{
+      const els = formD.querySelectorAll(`[name="${k}"]`);
+      els.forEach(el=>{
+        if(el.type === 'radio'){
+          el.checked = (el.value === v);
+        } else if(el.type === 'checkbox'){
+          el.checked = !!v;
+        } else {
+          el.value = v == null ? '' : v;
+        }
+      });
+    });
+    formD.querySelector('[name=id]').value = d.id;
+    formD.scrollIntoView({behavior:'smooth', block:'start'});
+    toast('Dokumentation geladen – nach Änderungen speichern');
+    return;
+  }
+  if(delId){
+    if(confirm('Dokumentation löschen?')){
+      state.dokus = state.dokus.filter(x=>x.id!==delId);
+      save(); renderDokus();
+    }
   }
 });
 

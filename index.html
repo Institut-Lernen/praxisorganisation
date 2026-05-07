@@ -601,7 +601,7 @@
           <th>Aktenzeichen</th>
           <th>Klient:in</th>
           <th>Therapeut:in</th>
-          <th>Stunden Monat</th>
+          <th>Therapieeinh. Monat</th>
           <th>Stundensatz</th>
           <th>Betrag</th>
           <th>Kontingent verbraucht</th>
@@ -635,7 +635,7 @@
           <th>Klient:in</th>
           <th>Eltern (Rechnungsadresse)</th>
           <th>Vertragstyp</th>
-          <th>Stunden Monat</th>
+          <th>Therapieeinh. Monat</th>
           <th>Stundensatz</th>
           <th>Betrag</th>
           <th>Bezahlt</th>
@@ -1762,7 +1762,8 @@ function renderAbrechnung(){
   jaKandidaten.forEach(s=>{
     const ein = einheitenInMonat(s, ym);
     if(!ein.length) return;
-    const std = ein.length;                // 1 Einheit = 1 Stunden-Position (Dauer steht in dauer)
+    // Therapieeinheiten = Summe der UE pro Sitzung (45 Min = 1 UE, 90 Min = 2 UE)
+    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std * satz;
     jaSumStd += std; jaSumBetrag += betrag;
@@ -1792,7 +1793,7 @@ function renderAbrechnung(){
   pKandidaten.forEach(s=>{
     const ein = einheitenInMonat(s, ym);
     if(!ein.length) return;
-    const std = ein.length;
+    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std * satz;
     // Pauschale ODER Stunden×Satz - Pauschale hat Vorrang, wenn gesetzt
@@ -2133,7 +2134,7 @@ function exportAbrJugendamt(){
   state.stammdaten.filter(canSeeStamm).filter(isJugendamtKlient).forEach(s=>{
     const ein = einheitenInMonat(s, ym);
     if(!ein.length) return;
-    const std = ein.length;
+    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std*satz;
     const k = kumulationFor(s);
@@ -2180,7 +2181,7 @@ function exportAbrPrivat(){
   state.stammdaten.filter(canSeeStamm).filter(isPrivatKlient).forEach(s=>{
     const ein = einheitenInMonat(s, ym);
     if(!ein.length) return;
-    const std = ein.length;
+    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std*satz;
     const k = kumulationFor(s);

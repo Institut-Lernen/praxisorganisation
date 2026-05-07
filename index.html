@@ -305,7 +305,7 @@
       <table id="stammTable">
         <thead><tr>
           <th>Buchst.</th><th>Kind</th><th>Therapeut:in</th>
-          <th>Vertrag</th><th>Beginn → Ende</th><th>Stunden</th>
+          <th>Vertrag</th><th>Beginn → Ende</th><th>Therapieeinheiten</th>
           <th>DSGVO</th><th>Schweigepfl.</th>
           <th></th>
         </tr></thead>
@@ -542,8 +542,16 @@
       <div><label>Aktenzeichen</label><input name="az" required></div>
       <div><label>Bewilligung von</label><input name="bewilligung_von" type="date" id="wjh_von"></div>
       <div><label>Bewilligung bis</label><input name="bewilligung_bis" type="date" id="wjh_bis"></div>
-      <div><label>Stunden pro Woche</label><input name="stunden_pro_woche" type="number" min="0.5" max="10" step="0.5" id="wjh_swo" placeholder="z. B. 1"></div>
-      <div><label>Berechnete Therapieeinheiten</label><input id="wjh_calc" readonly placeholder="– wird berechnet –"></div>
+      <div>
+        <label>Therapieeinheiten / Woche</label>
+        <input name="stunden_pro_woche" list="ueWoList" type="number" min="0.5" max="10" step="0.5" id="wjh_swo" placeholder="1 oder 2">
+        <datalist id="ueWoList">
+          <option value="1">1 Therapieeinheit/Woche (45 Min)</option>
+          <option value="2">2 Therapieeinheiten/Woche (90 Min)</option>
+        </datalist>
+        <span class="legend">1 Therapieeinheit = 45 Minuten</span>
+      </div>
+      <div><label>Bewilligte Therapieeinheiten gesamt</label><input id="wjh_calc" readonly placeholder="– wird berechnet –"></div>
       <div style="grid-column:1/-1"><label>Genehmigung – Bemerkung (optional)</label><input name="genehmigung" placeholder="z. B. Bescheid-Nr., Sachbearbeiter, Besonderheiten"></div>
       <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
         <button type="reset" class="btn ghost">Zurücksetzen</button>
@@ -559,10 +567,10 @@
       <table id="wjhTable">
         <thead><tr>
           <th>A</th><th>Name</th><th>Aktenzeichen</th>
-          <th>Bewilligungs­zeitraum</th><th>Std/Wo</th><th>Bewilligt ges.</th>
+          <th>Bewilligungs­zeitraum</th><th>Therapieeinh./Wo</th><th>Bewilligt gesamt</th>
           <th>Jan</th><th>Feb</th><th>Mär</th><th>Apr</th><th>Mai</th><th>Jun</th>
           <th>Jul</th><th>Aug</th><th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th>
-          <th>Σ verbr.</th><th>Rest</th><th></th>
+          <th>Σ verbraucht</th><th>Rest</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -1291,11 +1299,17 @@ function kumulationFor(s){
   let verbraucht = 0, geplant = 0, abgesagtTh = 0, durchgef = 0;
   eins.forEach(e=>{
     if(!inDateRange(e)) return;
-    if(STATUS_ZAEHLT.includes(e.status)) verbraucht++;
-    if(e.status === 'Durchgeführt' || e.status === 'Ersatztermin') durchgef++;
-    if(e.status === 'Geplant') geplant++;
-    if(e.status === 'Abgesagt durch Therapeut:in') abgesagtTh++;
+    const ue = dauerInUE(e.dauer || 45);
+    if(STATUS_ZAEHLT.includes(e.status)) verbraucht += ue;
+    if(e.status === 'Durchgeführt' || e.status === 'Ersatztermin') durchgef += ue;
+    if(e.status === 'Geplant') geplant += ue;
+    if(e.status === 'Abgesagt durch Therapeut:in') abgesagtTh += ue;
   });
+  // Auf 1 Nachkommastelle runden, falls nötig
+  verbraucht = Math.round(verbraucht*10)/10;
+  durchgef = Math.round(durchgef*10)/10;
+  geplant = Math.round(geplant*10)/10;
+  abgesagtTh = Math.round(abgesagtTh*10)/10;
   const kontingent = kontingentFor(s);
   return {verbraucht, durchgef, geplant, abgesagtTh, kontingent,
           verbleibend: kontingent ? Math.max(0, kontingent - verbraucht) : null,
@@ -1358,7 +1372,7 @@ function renderStammdaten(){
       if(k.kontingent){
         const pct = Math.round(k.quote*100);
         const pillCls = k.quote>=1 ? 'bad' : k.quote>=0.85 ? 'warn' : 'ok';
-        stundenBox = `<strong>${k.verbraucht} / ${k.kontingent}</strong>
+        stundenBox = `<strong>${k.verbraucht.toFixed(1)} / ${k.kontingent}</strong>
           <span class="pill ${pillCls}">${pct}%</span>
           <br><span class="legend">verbleibend: ${k.verbleibend}</span>`;
       } else if(k.verbraucht){
@@ -1490,7 +1504,7 @@ function updateWJHCalc(){
   if(result !== null){
     const tage = Math.round((new Date(bis) - new Date(von)) / 86400000) + 1;
     const wochen = (tage / 7).toFixed(1);
-    calc.value = `${result} Std (${wochen} Wo × ${swo} Std)`;
+    calc.value = `${result} Therapieeinheiten (${wochen} Wo × ${swo})`;
   } else {
     calc.value = '';
   }
@@ -1516,15 +1530,22 @@ formW.addEventListener('submit', e=>{
   document.getElementById('wjh_calc').value = '';
 });
 
+/* Hilfsfunktion: Dauer in Minuten → Anzahl Therapieeinheiten (1 UE = 45 Min) */
+function dauerInUE(minuten){
+  return (parseFloat(minuten)||0) / 45;
+}
+
 function monthlyHoursForName(name){
+  // Liefert pro Monat die Anzahl Therapieeinheiten (UE), nicht Zeitstunden!
+  // 45 Min Sitzung = 1 UE, 90 Min = 2 UE
   const m = Array(12).fill(0);
   state.einheiten.forEach(e=>{
-    if(e.status!=='Durchgeführt') return;
+    if(!STATUS_ZAEHLT.includes(e.status)) return;
     if(e.finanzierung!=='Jugendamt (WJH)') return;
     if(!e.patient || !name) return;
     if(!e.patient.toLowerCase().includes(name.split(',')[0].trim().toLowerCase())) return;
     const d = new Date(e.datum); if(isNaN(d)) return;
-    m[d.getMonth()] += (parseInt(e.dauer)||0)/60;
+    m[d.getMonth()] += dauerInUE(e.dauer);
   });
   return m;
 }
@@ -1935,9 +1956,9 @@ function exportWarteliste(){
 
 function exportWJH(){
   const wb = XLSX.utils.book_new();
-  const hdr = ['Alphabet','Name','Aktenzeichen','Bewilligung von','Bewilligung bis','Stunden/Woche','Bewilligte Therapieeinheiten gesamt'];
-  MONATE.forEach((m,i)=>{ hdr.push(m); hdr.push('Stunden '+(i+1)); hdr.push('Summe '+(i+1)); });
-  hdr.push('Verbleibendes Kontingent');
+  const hdr = ['Alphabet','Name','Aktenzeichen','Bewilligung von','Bewilligung bis','Therapieeinheiten/Woche','Bewilligte Therapieeinheiten gesamt'];
+  MONATE.forEach((m,i)=>{ hdr.push(m+' Termine'); hdr.push('Therapieeinheiten '+(i+1)); hdr.push('Σ kumuliert '+(i+1)); });
+  hdr.push('Verbleibende Therapieeinheiten');
   hdr.push('Genehmigung – Bemerkung');
   const rows = [hdr];
   state.wjh.forEach(w=>{
@@ -2178,7 +2199,7 @@ document.getElementById('btnDemo').addEventListener('click', ()=>{
     uhrzeit:'15:00-15:45', therapeut:'Hohmann, Jeannine', patient:'Muster, Demo',
     dauer:'45', leistung:'Lerntherapie LRS', form:'Einzel',
     finanzierung:'Privat', status:'Abgesagt durch Eltern',
-    notiz:'Krank gemeldet – wird trotzdem abgerechnet'
+    notiz:'Krank gemeldet – wird trotzdem abgerechnet (1 Therapieeinheit)'
   });
   const td2 = new Date(today); td2.setDate(today.getDate()-3);
   state.einheiten.unshift({

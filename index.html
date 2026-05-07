@@ -242,6 +242,7 @@
         </select>
       </div>
       <div><label>Vertragsbeginn</label><input name="vertragsbeginn" type="date" id="vertragsbeginn"></div>
+      <div><label>Vertragsende</label><input name="vertragsende" type="date" id="vertragsende" title="Bei Miniabonnement automatisch +12 Monate – kann überschrieben werden"></div>
       <div><label>Kontingent (Std.)</label><input name="kontingent" type="number" min="0" max="500" id="kontingent" placeholder="36"></div>
       <div><label>Stundensatz (€)</label><input name="stundensatz" type="number" min="0" max="500" step="0.01" placeholder="z. B. 65,00"></div>
       <div><label>Monatspauschale (€) <span class="pill">Abo</span></label><input name="monatspauschale" type="number" min="0" max="2000" step="0.01" id="monatspauschale" placeholder="z. B. 305,00"></div>
@@ -1167,22 +1168,29 @@ function updateVertragsHinweis(){
   if(typ === 'Miniabonnement' && !kont.value) kont.value = '36';
   const pausch = document.getElementById('monatspauschale');
   if(typ === 'Miniabonnement' && !pausch.value) pausch.value = '305.00';
+  // Vertragsende automatisch +12 Monate bei Miniabo, NUR wenn noch leer
+  const endeInput = document.getElementById('vertragsende');
+  if(typ === 'Miniabonnement' && beginn && !endeInput.value){
+    const d = new Date(beginn); d.setMonth(d.getMonth()+12);
+    endeInput.value = d.toISOString().slice(0,10);
+  }
   let h = '';
   if(beginn){
-    const d = new Date(beginn);
-    if(typ === 'Miniabonnement'){
-      const e = new Date(d); e.setMonth(e.getMonth()+12);
-      h = `Vertragsende automatisch: <strong>${e.toISOString().slice(0,10)}</strong> · Kontingent: <strong>${kont.value||36} Stunden</strong> · Monatspauschale: <strong>${pausch.value||305} €</strong>`;
-    } else if(pausch.value){
-      h = `Vertragsbeginn: ${beginn}. Monatspauschale: <strong>${pausch.value} €</strong>`;
+    const ende = endeInput.value;
+    if(ende){
+      const wochen = Math.round((new Date(ende) - new Date(beginn)) / 86400000 / 7 * 10) / 10;
+      h = `Vertragslaufzeit: <strong>${beginn} → ${ende}</strong> (${wochen} Wochen)` +
+          (typ === 'Miniabonnement' ? ` · Kontingent: <strong>${kont.value||36} Std</strong> · Pauschale: <strong>${pausch.value||305} €</strong>` : '') +
+          (typ === 'Jugendamt' ? ` · Genaue Bewilligung im Tab „Wirtschaftliche Jugendhilfe"` : '');
     } else {
-      h = `Vertragsbeginn: ${beginn}. Bei diesem Typ wird kein automatisches Vertragsende berechnet.`;
+      h = `Vertragsbeginn: ${beginn}. Vertragsende manuell eintragen` + 
+          (typ === 'Miniabonnement' ? ' oder bei Miniabonnement: wird automatisch +12 Monate gesetzt.' : '.');
     }
   }
   document.getElementById('vertragsHinweis').innerHTML = h ||
     'Vertragsende und verbleibendes Kontingent werden automatisch berechnet und in der Übersicht angezeigt.';
 }
-['vertragstyp','vertragsbeginn','kontingent','monatspauschale'].forEach(id=>{
+['vertragstyp','vertragsbeginn','vertragsende','kontingent','monatspauschale'].forEach(id=>{
   document.getElementById(id).addEventListener('change', updateVertragsHinweis);
   document.getElementById(id).addEventListener('input', updateVertragsHinweis);
 });
@@ -1238,12 +1246,17 @@ function pflichtFehlt(s){
 const STATUS_ZAEHLT = ['Durchgeführt','Abgesagt durch Eltern','Ersatztermin'];
 
 function vertragsende(s){
+  // Manuell eingetragenes Ende hat IMMER Vorrang
+  if(s.vertragsende){
+    const d = new Date(s.vertragsende);
+    if(!isNaN(d)) return d;
+  }
+  // Sonst: Auto-Berechnung nur bei Miniabonnement
   if(!s.vertragsbeginn) return null;
-  const d = new Date(s.vertragsbeginn);
-  if(isNaN(d)) return null;
-  // Standard: 12 Monate ab Beginn (Miniabo); andere Typen leer = offen
+  const b = new Date(s.vertragsbeginn);
+  if(isNaN(b)) return null;
   if(s.vertragstyp === 'Miniabonnement' || !s.vertragstyp){
-    const e = new Date(d); e.setMonth(e.getMonth()+12); return e;
+    const e = new Date(b); e.setMonth(e.getMonth()+12); return e;
   }
   return null;
 }
@@ -2151,7 +2164,7 @@ document.getElementById('btnDemo').addEventListener('click', ()=>{
     therapeutin:'Hohmann, Jeannine', dsgvo:'ja', vertrag:'unterschrieben',
     schweigepflicht:'liegt vor', kostenzusage:'Jugendamt – 40 Std bis 31.12.2026',
     az:'JA-2026-0042',
-    vertragstyp:'Jugendamt', vertragsbeginn:'2026-01-15', kontingent:'40', stundensatz:'85.00'
+    vertragstyp:'Jugendamt', vertragsbeginn:'2026-01-15', vertragsende:'2026-12-31', kontingent:'40', stundensatz:'85.00'
   });
   state.stammdaten.unshift({
     id:uid(), buchstabe:'M', k_nachname:'Muster', k_vorname:'Demo', k_gebKlasse:'2017 / 2b',

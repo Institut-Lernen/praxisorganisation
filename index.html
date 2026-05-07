@@ -2218,13 +2218,14 @@ const MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August',
 
 /* Style-Helper: macht aus einer Roh-Sheet eine schön formatierte Tabelle.
    Header-Zeile rot, Daten mit Zebra-Streifen, dünner Rahmen, Auto-Spaltenbreiten. */
+// Farben als ARGB (Alpha + RGB), Alpha=FF=undurchsichtig
 const STYLE = {
-  primary: 'B81F29',
-  primaryDark: '8E1820',
-  soft: 'FBEAEC',
-  ink: '26181A',
-  border: 'D9C4C7',
-  white: 'FFFFFF',
+  primary: 'FF9E4047',      // gedämpftes Bordeaux
+  primaryDark: 'FF6F2A2F',
+  soft: 'FFF8F2F3',         // zartes Rosé für Zebra
+  ink: 'FF2D2429',          // tiefes Anthrazit
+  border: 'FFE5DCDE',       // weiches Grau-Rosa
+  white: 'FFFFFFFF',
 };
 
 function styleSheet(ws, opts){

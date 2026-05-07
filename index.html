@@ -669,15 +669,17 @@
   <div class="card">
     <h2>Wochenübersicht</h2>
     <div class="row toolbar">
-      <label style="margin:0">Therapeut:in-Filter</label>
+      <label style="margin:0">Therapeut:in</label>
       <select id="filterTherapeut" style="width:auto"><option value="">alle</option></select>
+      <label style="margin:0">Klient:in</label>
+      <select id="filterKlient" style="width:auto"><option value="">alle</option></select>
       <label style="margin:0">Woche</label>
       <input type="week" id="filterWeek" style="width:auto">
       <span class="right muted" id="weekRange"></span>
     </div>
     <div class="grid grid-4">
-      <div class="summary-tile"><div class="num" id="kpiCount">0</div><div class="lbl">Einheiten Woche</div></div>
-      <div class="summary-tile"><div class="num" id="kpiHours">0,0</div><div class="lbl">Stunden Woche</div></div>
+      <div class="summary-tile"><div class="num" id="kpiCount">0</div><div class="lbl">Therapieeinh. Woche</div></div>
+      <div class="summary-tile"><div class="num" id="kpiHours">0,0</div><div class="lbl">Sitzungen / Std</div></div>
       <div class="summary-tile"><div class="num" id="kpiAusf">0</div><div class="lbl">Absagen E + Th</div></div>
       <div class="summary-tile"><div class="num" id="kpiPat">0</div><div class="lbl">Klient:innen</div></div>
     </div>
@@ -1878,6 +1880,13 @@ function renderUebersicht(){
   const therapeuten = [...new Set(state.einheiten.map(e=>e.therapeut).filter(Boolean))];
   const cur = fSel.value;
   fSel.innerHTML = '<option value="">alle</option>' + therapeuten.map(t=>`<option ${t===cur?'selected':''}>${t}</option>`).join('');
+  // Klient:innen-Filter aus Stammdaten + ggf. zusätzlichen Patienten in Einheiten
+  const klSel = document.getElementById('filterKlient');
+  const klFromStamm = state.stammdaten.filter(canSeeStamm).map(s=>`${s.k_nachname||''}, ${s.k_vorname||''}`).filter(Boolean);
+  const klFromEinheiten = [...new Set(state.einheiten.map(e=>e.patient).filter(Boolean))];
+  const klAll = [...new Set([...klFromStamm, ...klFromEinheiten])].sort();
+  const curKl = klSel.value;
+  klSel.innerHTML = '<option value="">alle</option>' + klAll.map(k=>`<option ${k===curKl?'selected':''}>${k}</option>`).join('');
   document.getElementById('reportTherapeut').innerHTML = therapeuten.map(t=>`<option>${t}</option>`).join('') || '<option>—</option>';
   const w = document.getElementById('filterWeek').value || (()=>{
     const d = new Date(); const dow = d.getDay()||7;
@@ -1893,6 +1902,12 @@ function renderUebersicht(){
 
   let items = state.einheiten.filter(canSeeEinheit).filter(e=>{
     if(fSel.value && e.therapeut!==fSel.value) return false;
+    if(klSel.value){
+      const filterLow = klSel.value.toLowerCase();
+      const patient = (e.patient||'').toLowerCase();
+      const lastName = filterLow.split(',')[0].trim();
+      if(patient !== filterLow && !patient.includes(lastName)) return false;
+    }
     const d = new Date(e.datum);
     return mon && d>=mon && d<=new Date(sun.getTime()+86400000-1);
   });
@@ -1906,15 +1921,29 @@ function renderUebersicht(){
         : (e.status==='Abgesagt durch Therapeut:in' ? 'bad'
         : (e.status==='Abgesagt durch Eltern' ? 'warn' : 'warn'));
       const tr = document.createElement('tr');
+      // Patient-Match in Stammdaten suchen
+      const matchedStamm = state.stammdaten.find(s=>{
+        if(!e.patient) return false;
+        const fullName = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase();
+        const p = e.patient.toLowerCase();
+        return p === fullName || (s.k_nachname && p.includes(s.k_nachname.toLowerCase()));
+      });
+      const patientCell = matchedStamm
+        ? `<a href="#" data-open-stamm="${matchedStamm.id}" style="color:var(--primary);text-decoration:underline" title="Stammdaten von ${matchedStamm.k_nachname||''}, ${matchedStamm.k_vorname||''} öffnen">${e.patient||''}</a>${matchedStamm.vertragstyp?`<br><span class="legend">${matchedStamm.vertragstyp}</span>`:''}`
+        : `${e.patient||''} <span class="legend" title="Keine Stammdaten gefunden">⚠ kein Stamm</span>`;
       tr.innerHTML = `<td>${e.wochentag||''}</td><td>${e.datum||''}</td><td>${e.uhrzeit||''}</td>
-        <td>${e.therapeut||''}</td><td>${e.patient||''}</td><td>${e.leistung||''}</td>
+        <td>${e.therapeut||''}</td><td>${patientCell}</td><td>${e.leistung||''}</td>
         <td>${e.dauer||''}</td><td><span class="pill ${status}">${e.status||''}</span></td>`;
       tb.appendChild(tr);
     });
   }
   const done = items.filter(e=>e.status==='Durchgeführt'||e.status==='Ersatztermin');
-  document.getElementById('kpiCount').textContent = items.length;
-  document.getElementById('kpiHours').textContent = (done.reduce((s,e)=>s+(parseInt(e.dauer)||0),0)/60).toFixed(1).replace('.',',');
+  // Therapieeinheiten = Summe aller UE der zählenden Status (45 Min = 1 UE)
+  const ueSum = items.filter(e=>STATUS_ZAEHLT.includes(e.status))
+                     .reduce((sum,e)=>sum + dauerInUE(e.dauer || 45), 0);
+  document.getElementById('kpiCount').textContent = (Math.round(ueSum*10)/10).toString().replace('.',',');
+  const stdSum = (done.reduce((s,e)=>s+(parseInt(e.dauer)||0),0)/60).toFixed(1).replace('.',',');
+  document.getElementById('kpiHours').textContent = `${items.length} / ${stdSum} h`;
   // KPI "Ausgefallen" zeigt jetzt: Eltern-Absagen (zählen) | Therapeut-Absagen (zählen NICHT)
   const aE = items.filter(e=>e.status==='Abgesagt durch Eltern').length;
   const aT = items.filter(e=>e.status==='Abgesagt durch Therapeut:in').length;
@@ -1922,7 +1951,29 @@ function renderUebersicht(){
   document.getElementById('kpiPat').textContent = new Set(items.map(e=>e.patient)).size;
 }
 document.getElementById('filterTherapeut').addEventListener('change', renderUebersicht);
+document.getElementById('filterKlient').addEventListener('change', renderUebersicht);
 document.getElementById('filterWeek').addEventListener('change', renderUebersicht);
+
+// Klick auf Patientenname → wechsle zum Stammdaten-Tab und öffne den Datensatz
+document.querySelector('#weekTable').addEventListener('click', e=>{
+  const id = e.target.dataset.openStamm; if(!id) return;
+  e.preventDefault();
+  const s = state.stammdaten.find(x=>x.id===id); if(!s) return;
+  // Tab wechseln
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='stammdaten'));
+  document.querySelectorAll('section[data-panel]').forEach(p=>p.hidden = p.dataset.panel !== 'stammdaten');
+  renderStammdaten();
+  // Stammdatensatz in die Maske laden
+  setTimeout(()=>{
+    const formS = document.getElementById('formStamm');
+    formS.reset();
+    Object.entries(s).forEach(([k,v])=>{
+      const el = formS.querySelector(`[name="${k}"]`); if(el) el.value = v||'';
+    });
+    formS.querySelector('[name=id]').value = s.id;
+    formS.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 50);
+});
 
 document.getElementById('btnPrintReport').addEventListener('click', ()=>{
   const t = document.getElementById('reportTherapeut').value;

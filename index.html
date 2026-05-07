@@ -749,8 +749,8 @@
       – damit mehrere Therapeut:innen gleichzeitig arbeiten können.
     </div>
     <div class="grid grid-2">
-      <button class="btn" data-export="lt-stunden">⤓ LT-Stunden Hohmann (Mo–Fr)</button>
-      <button class="btn" data-export="lt-honorar">⤓ LT-Stunden Honorarkräfte</button>
+      <button class="btn" data-export="lt-stunden">⤓ LT-Stunden Hohmann (Privat, Festangestellt)</button>
+      <button class="btn" data-export="lt-honorar">⤓ LT-Stunden Honorarkräfte (Privat)</button>
       <button class="btn" data-export="warteliste">⤓ Warteliste &amp; Erstkontakt</button>
       <button class="btn" data-export="wjh">⤓ Wirtschaftliche Jugendhilfe</button>
       <button class="btn" data-export="stammdaten">⤓ Stammdaten (Kontaktdaten)</button>
@@ -2217,6 +2217,29 @@ document.getElementById('btnPrintReport').addEventListener('click', ()=>{
    ============================================================ */
 const MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
+/* Klassifiziert eine:n Klient:in nach Vertragstyp anhand der Stammdaten.
+   Rückgabe: 'jugendamt' | 'privat' | 'unknown' */
+function klientVertragKategorie(patientName){
+  if(!patientName) return 'unknown';
+  const last = patientName.toLowerCase().split(',')[0].trim();
+  const stamm = state.stammdaten.find(s =>
+    last && (s.k_nachname||'').toLowerCase().trim() === last
+  );
+  if(!stamm) return 'unknown';
+  if(stamm.vertragstyp === 'Jugendamt') return 'jugendamt';
+  if(['Miniabonnement','Standardvertrag','Privat offen'].includes(stamm.vertragstyp)) return 'privat';
+  return 'unknown';
+}
+
+/* Klassifiziert eine:n Therapeut:in anhand der Therapeuten-Konfiguration.
+   Rückgabe: 'festangestellt' | 'honorar' | 'unknown' (Fallback: 'festangestellt') */
+function therapeutRolle(therapeutName){
+  if(!therapeutName) return 'festangestellt';
+  const low = therapeutName.toLowerCase().trim();
+  const t = (state.therapeuten||[]).find(x => x.name.toLowerCase().trim() === low);
+  return t ? t.rolle : 'festangestellt';
+}
+
 /* Style-Helper: macht aus einer Roh-Sheet eine schön formatierte Tabelle.
    Header-Zeile rot, Daten mit Zebra-Streifen, dünner Rahmen, Auto-Spaltenbreiten. */
 // Farben als ARGB (Alpha + RGB), Alpha=FF=undurchsichtig
@@ -2297,12 +2320,20 @@ function styleSheet(ws, opts){
   return ws;
 }
 
-function buildLTSheet(weekday, includeTherapeutCol){
+function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
+  // filterTherRolle: 'festangestellt' | 'honorar' | undefined (= alle)
   const header = includeTherapeutCol
     ? ['Wochentag','Name/Uhrzeit','Therapeutin', ...MONATE,'Dez 25','x']
     : ['Wochentag','Name','Uhrzeit', ...MONATE,'Dez 25','x'];
   const rows = [header];
-  const items = state.einheiten.filter(e=>e.wochentag===weekday);
+  const items = state.einheiten.filter(e=>{
+    if(e.wochentag !== weekday) return false;
+    // Privat-Klient:innen filtern (Jugendamt gehört in die WJH-Datei)
+    if(klientVertragKategorie(e.patient) === 'jugendamt') return false;
+    // Optional: nach Therapeut:in-Rolle filtern
+    if(filterTherRolle && therapeutRolle(e.therapeut) !== filterTherRolle) return false;
+    return true;
+  });
   const slots = {};
   items.forEach(e=>{
     const key = (e.patient||'') + '|' + (e.uhrzeit||'') + '|' + (e.therapeut||'');
@@ -2334,17 +2365,19 @@ function buildLTSheet(weekday, includeTherapeutCol){
 }
 
 function exportLT(){
+  // LT-Stunden Hohmann: Privat-Klient:innen, Festangestellte
   const wb = XLSX.utils.book_new();
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
-    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, false), 'LT '+d);
+    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, false, 'festangestellt'), 'LT '+d);
   });
   XLSX.writeFile(wb, 'LT-Stunden_'+(state.user.name||'Hohmann')+'.xlsx');
 }
 
 function exportHonorar(){
+  // LT-Stunden Honorarkräfte: Privat-Klient:innen, nur Honorar-Therapeut:innen
   const wb = XLSX.utils.book_new();
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
-    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, true), 'LT '+d);
+    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, true, 'honorar'), 'LT '+d);
   });
   XLSX.writeFile(wb, 'LT-Stunden_Honorarkraefte.xlsx');
 }
@@ -2485,7 +2518,60 @@ function exportAbonnement(){
   ], 7);
   XLSX.utils.book_append_sheet(wb, styleSheet(sheet2, {headerRows:1}), '7-12_Abonnement LT');
 
+  // Sheet 3: Einzelpositionen pro Vertrag (alle Therapieeinheiten als Detailauflistung)
+  const sheet3 = makeAbonnementDetailSheet(klienten, jahr);
+  XLSX.utils.book_append_sheet(wb, styleSheet(sheet3, {headerRows:1}), 'Einzelpositionen');
+
   XLSX.writeFile(wb, `Abonnement_Lerntherapie_${jahr}.xlsx`);
+}
+
+function makeAbonnementDetailSheet(klienten, jahr){
+  const rows = [['Klient:in','Vertragstyp','Vertrags­beginn','Vertrags­ende','Monats­pauschale',
+                 'Therapeut:in','Datum','Wochentag','Uhrzeit','Dauer (Min)','Therapie­einheiten',
+                 'Status','Leistung','Notiz','Bezahlt (Monat)']];
+
+  klienten.forEach(s => {
+    const ende = vertragsende(s);
+    const endeStr = ende ? ende.toISOString().slice(0,10) : '';
+    // Alle Termine dieses Klienten im Jahr, sortiert nach Datum
+    const lastName = (s.k_nachname||'').toLowerCase().trim();
+    if(!lastName) return;
+    const termine = state.einheiten.filter(e=>{
+      if(!STATUS_ZAEHLT.includes(e.status) && e.status !== 'Geplant' && e.status !== 'Abgesagt durch Therapeut:in') return false;
+      if(!e.patient || !e.patient.toLowerCase().includes(lastName)) return false;
+      const d = new Date(e.datum); if(isNaN(d)) return false;
+      return d.getFullYear() === jahr;
+    }).sort((a,b)=> (a.datum||'').localeCompare(b.datum||''));
+
+    if(!termine.length){
+      // Vertrag ohne Termine in diesem Jahr trotzdem als Zeile aufnehmen (Übersicht)
+      rows.push([
+        `${s.k_nachname||''}, ${s.k_vorname||''}`,
+        s.vertragstyp||'', s.vertragsbeginn||'', endeStr,
+        s.monatspauschale ? parseFloat(s.monatspauschale).toFixed(2)+' €' : '',
+        s.therapeutin||'', '–','','','','','keine Termine im Jahr','','',''
+      ]);
+      return;
+    }
+
+    termine.forEach(e=>{
+      const ymStr = e.datum ? e.datum.slice(0,7) : '';
+      const bez = ymStr && getZahlung(s.id, ymStr) === 'bezahlt' ? 'x' : '';
+      const ue = STATUS_ZAEHLT.includes(e.status) ? Math.round(dauerInUE(e.dauer || 45)*10)/10 : 0;
+      rows.push([
+        `${s.k_nachname||''}, ${s.k_vorname||''}`,
+        s.vertragstyp||'',
+        s.vertragsbeginn||'', endeStr,
+        s.monatspauschale ? parseFloat(s.monatspauschale).toFixed(2)+' €' : '',
+        e.therapeut || s.therapeutin || '',
+        e.datum||'', e.wochentag||'', e.uhrzeit||'',
+        e.dauer||'', ue || '',
+        e.status||'', e.leistung||'', e.notiz||'', bez
+      ]);
+    });
+  });
+
+  return XLSX.utils.aoa_to_sheet(rows);
 }
 
 function makeAbonnementSheet(klienten, jahr, startMonat, anzMonate, monatsNamen, monatNumStart){

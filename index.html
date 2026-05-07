@@ -1566,6 +1566,22 @@ function renderStammdaten(){
 
 document.getElementById('stammSearch').addEventListener('input', renderStammdaten);
 
+// Klick auf eine Therapieplätze-Kachel → filtert die Klient:innen-Tabelle nach Therapeut:in
+document.getElementById('plaetzeOverview').addEventListener('click', e=>{
+  const tile = e.target.closest('[data-filter-ther]'); if(!tile) return;
+  const therName = tile.dataset.filterTher;
+  const search = document.getElementById('stammSearch');
+  // Toggle: schon aktiv → Filter aufheben
+  if(search.value.toLowerCase().trim() === therName.toLowerCase().trim()){
+    search.value = '';
+  } else {
+    search.value = therName;
+  }
+  renderStammdaten();
+  // Zur Klient:innen-Tabelle scrollen
+  document.getElementById('stammTable').scrollIntoView({behavior:'smooth', block:'start'});
+});
+
 // Therapeut:in hinzufügen / aktualisieren
 const formT = document.getElementById('formTher');
 formT.addEventListener('submit', e=>{
@@ -1638,13 +1654,19 @@ function renderPlaetzeOverview(){
     const frei = Math.max(0, max - belegt);
     const quote = max ? belegt/max : 0;
     const cls = quote >= 1 ? 'bad' : quote >= 0.85 ? 'warn' : 'ok';
-    return `<div class="summary-tile" style="text-align:left;padding:14px">
-      <div style="font-weight:600;color:var(--primary);font-size:14px">${t.name}</div>
+    const aktiv = (document.getElementById('stammSearch').value||'').toLowerCase().trim() === t.name.toLowerCase().trim();
+    return `<div class="summary-tile" data-filter-ther="${t.name.replace(/"/g,'&quot;')}" 
+                 style="text-align:left;padding:14px;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease;${aktiv?'box-shadow:0 0 0 2px var(--primary);background:#fff':''}"
+                 title="Klicken: nur ${t.name}-Klient:innen in der Tabelle anzeigen"
+                 onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.08)'"
+                 onmouseout="this.style.transform='';this.style.boxShadow='${aktiv?'0 0 0 2px var(--primary)':''}'">
+      <div style="font-weight:600;color:var(--primary);font-size:14px">${t.name} ${aktiv?'<span class=\'pill ok\'>aktiv</span>':''}</div>
       <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${t.rolle||''}</div>
       <div style="display:flex;align-items:baseline;gap:6px">
         <span style="font-size:24px;font-weight:700">${belegt} / ${max}</span>
         <span class="pill ${cls}">${frei} frei</span>
       </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">→ Klient:innen anzeigen</div>
     </div>`;
   }).join('');
 }

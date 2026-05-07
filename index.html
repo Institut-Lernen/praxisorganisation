@@ -539,7 +539,11 @@
       <div><label>Alphabet (Buchstabe)</label><input name="alphabet" maxlength="2"></div>
       <div style="grid-column:span 2"><label>Name (Nachname, Vorname)</label><input name="name" required></div>
       <div><label>Aktenzeichen</label><input name="az" required></div>
-      <div style="grid-column:span 2"><label>Genehmigung (Zeitraum/Bemerkung)</label><input name="genehmigung"></div>
+      <div><label>Bewilligung von</label><input name="bewilligung_von" type="date" id="wjh_von"></div>
+      <div><label>Bewilligung bis</label><input name="bewilligung_bis" type="date" id="wjh_bis"></div>
+      <div><label>Stunden pro Woche</label><input name="stunden_pro_woche" type="number" min="0.5" max="10" step="0.5" id="wjh_swo" placeholder="z. B. 1"></div>
+      <div><label>Berechnete Therapieeinheiten</label><input id="wjh_calc" readonly placeholder="– wird berechnet –"></div>
+      <div style="grid-column:1/-1"><label>Genehmigung – Bemerkung (optional)</label><input name="genehmigung" placeholder="z. B. Bescheid-Nr., Sachbearbeiter, Besonderheiten"></div>
       <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
         <button type="reset" class="btn ghost">Zurücksetzen</button>
         <button type="submit" class="btn">Akte speichern</button>
@@ -554,9 +558,10 @@
       <table id="wjhTable">
         <thead><tr>
           <th>A</th><th>Name</th><th>Aktenzeichen</th>
+          <th>Bewilligungs­zeitraum</th><th>Std/Wo</th><th>Bewilligt ges.</th>
           <th>Jan</th><th>Feb</th><th>Mär</th><th>Apr</th><th>Mai</th><th>Jun</th>
           <th>Jul</th><th>Aug</th><th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th>
-          <th>Σ</th><th>Genehmigung</th><th></th>
+          <th>Σ verbr.</th><th>Rest</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -1453,13 +1458,49 @@ document.querySelector('#erstTable').addEventListener('click', e=>{
    4) Wirtschaftliche Jugendhilfe
    ============================================================ */
 const formW = document.getElementById('formWJH');
+
+function berechneBewilligteEinheiten(von, bis, swo){
+  if(!von || !bis || !swo) return null;
+  const d1 = new Date(von), d2 = new Date(bis);
+  if(isNaN(d1) || isNaN(d2) || d2 < d1) return null;
+  const tage = Math.round((d2 - d1) / 86400000) + 1;
+  const wochen = tage / 7;
+  return Math.round(wochen * parseFloat(swo) * 10) / 10;  // 1 Nachkommastelle
+}
+
+function updateWJHCalc(){
+  const von = document.getElementById('wjh_von').value;
+  const bis = document.getElementById('wjh_bis').value;
+  const swo = document.getElementById('wjh_swo').value;
+  const result = berechneBewilligteEinheiten(von, bis, swo);
+  const calc = document.getElementById('wjh_calc');
+  if(result !== null){
+    const tage = Math.round((new Date(bis) - new Date(von)) / 86400000) + 1;
+    const wochen = (tage / 7).toFixed(1);
+    calc.value = `${result} Std (${wochen} Wo × ${swo} Std)`;
+  } else {
+    calc.value = '';
+  }
+}
+['wjh_von','wjh_bis','wjh_swo'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', updateWJHCalc);
+  document.getElementById(id).addEventListener('input', updateWJHCalc);
+});
+
 formW.addEventListener('submit', e=>{
   e.preventDefault();
-  const o = dataFromForm(formW); o.id = uid();
-  state.wjh.unshift(o);
+  const o = dataFromForm(formW);
+  if(o.id){
+    state.wjh = state.wjh.map(w => w.id===o.id ? Object.assign({}, w, o) : w);
+    toast('Akte aktualisiert');
+  } else {
+    o.id = uid();
+    state.wjh.unshift(o);
+    toast('Akte gespeichert');
+  }
   save(); renderWJH();
   formW.reset();
-  toast('Akte gespeichert');
+  document.getElementById('wjh_calc').value = '';
 });
 
 function monthlyHoursForName(name){
@@ -1478,26 +1519,56 @@ function monthlyHoursForName(name){
 function renderWJH(){
   const tb = document.querySelector('#wjhTable tbody'); tb.innerHTML='';
   if(!state.wjh.length){
-    tb.innerHTML = '<tr><td colspan="18" class="empty">Noch keine WJH-Akten.</td></tr>'; return;
+    tb.innerHTML = '<tr><td colspan="21" class="empty">Noch keine WJH-Akten.</td></tr>'; return;
   }
   state.wjh.forEach(w=>{
     const m = monthlyHoursForName(w.name||'');
-    const sum = m.reduce((a,b)=>a+b,0);
+    const verbraucht = m.reduce((a,b)=>a+b,0);
+    const bewilligt = berechneBewilligteEinheiten(w.bewilligung_von, w.bewilligung_bis, w.stunden_pro_woche);
+    const rest = bewilligt !== null ? Math.max(0, bewilligt - verbraucht) : null;
+    const quote = bewilligt ? verbraucht / bewilligt : 0;
+    const restCls = quote >= 1 ? 'bad' : quote >= 0.85 ? 'warn' : 'ok';
+    const zeitraum = (w.bewilligung_von && w.bewilligung_bis)
+      ? `<span class="legend">${w.bewilligung_von}<br>bis ${w.bewilligung_bis}</span>`
+      : `<span class="legend">${w.genehmigung || '–'}</span>`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${w.alphabet||''}</td><td>${w.name||''}</td><td>${w.az||''}</td>` +
+      <td>${w.alphabet||''}</td><td>${w.name||''}</td><td>${w.az||''}</td>
+      <td>${zeitraum}</td>
+      <td>${w.stunden_pro_woche || ''}</td>
+      <td>${bewilligt !== null ? '<strong>'+bewilligt+'</strong>' : '<span class="legend">–</span>'}</td>` +
       m.map(x=>`<td>${x?x.toFixed(1):''}</td>`).join('') +
-      `<td><strong>${sum.toFixed(1)}</strong></td>
-       <td>${w.genehmigung||''}</td>
-       <td><button class="btn small ghost" data-del-w="${w.id}">Löschen</button></td>`;
+      `<td><strong>${verbraucht.toFixed(1)}</strong></td>
+       <td>${rest !== null ? '<span class="pill '+restCls+'">'+rest.toFixed(1)+'</span>' : '<span class="legend">–</span>'}</td>
+       <td>
+         <button class="btn small ghost" data-edit-w="${w.id}">Bearbeiten</button>
+         <button class="btn small ghost" data-del-w="${w.id}">Löschen</button>
+       </td>`;
     tb.appendChild(tr);
   });
 }
 document.querySelector('#wjhTable').addEventListener('click', e=>{
-  const id = e.target.dataset.delW; if(!id) return;
-  if(confirm('WJH-Akte löschen?')){
-    state.wjh = state.wjh.filter(x=>x.id!==id);
-    save(); renderWJH();
+  const editId = e.target.dataset.editW;
+  const delId = e.target.dataset.delW;
+  if(editId){
+    const w = state.wjh.find(x=>x.id===editId); if(!w) return;
+    formW.reset();
+    Object.entries(w).forEach(([k,v])=>{
+      const el = formW.querySelector(`[name="${k}"]`); if(el) el.value = v||'';
+    });
+    if(!formW.querySelector('[name=id]')){
+      const h = document.createElement('input'); h.type='hidden'; h.name='id'; formW.appendChild(h);
+    }
+    formW.querySelector('[name=id]').value = w.id;
+    updateWJHCalc();
+    formW.scrollIntoView({behavior:'smooth', block:'start'});
+    return;
+  }
+  if(delId){
+    if(confirm('WJH-Akte löschen?')){
+      state.wjh = state.wjh.filter(x=>x.id!==delId);
+      save(); renderWJH();
+    }
   }
 });
 
@@ -1851,13 +1922,15 @@ function exportWarteliste(){
 
 function exportWJH(){
   const wb = XLSX.utils.book_new();
-  const hdr = ['Alphabet','Name','Aktenzeichen'];
+  const hdr = ['Alphabet','Name','Aktenzeichen','Bewilligung von','Bewilligung bis','Stunden/Woche','Bewilligte Therapieeinheiten gesamt'];
   MONATE.forEach((m,i)=>{ hdr.push(m); hdr.push('Stunden '+(i+1)); hdr.push('Summe '+(i+1)); });
-  hdr.push('Genehmigung');
+  hdr.push('Verbleibendes Kontingent');
+  hdr.push('Genehmigung – Bemerkung');
   const rows = [hdr];
   state.wjh.forEach(w=>{
     const m = monthlyHoursForName(w.name||'');
-    const r = [w.alphabet||'', w.name||'', w.az||''];
+    const bewilligt = berechneBewilligteEinheiten(w.bewilligung_von, w.bewilligung_bis, w.stunden_pro_woche);
+    const r = [w.alphabet||'', w.name||'', w.az||'', w.bewilligung_von||'', w.bewilligung_bis||'', w.stunden_pro_woche||'', bewilligt!==null?bewilligt:''];
     let lauf = 0;
     m.forEach((h,i)=>{
       const datums = state.einheiten
@@ -1867,6 +1940,8 @@ function exportWJH(){
         .map(e=>e.datum).sort().join(' / ');
       r.push(datums); r.push(h ? h.toFixed(1) : ''); lauf += h; r.push(lauf ? lauf.toFixed(1) : '');
     });
+    const rest = bewilligt!==null ? Math.max(0, bewilligt - lauf) : '';
+    r.push(rest!==''?rest.toFixed(1):'');
     r.push(w.genehmigung||'');
     rows.push(r);
   });
@@ -2068,7 +2143,7 @@ document.getElementById('btnDemo').addEventListener('click', ()=>{
       finanzierung:'Privat', status:'Durchgeführt'
     });
   }
-  state.wjh.unshift({id:uid(), alphabet:'S', name:'Schmidt, Lina', az:'JA-2026-0042', genehmigung:'40 Std bis 12/2026'});
+  state.wjh.unshift({id:uid(), alphabet:'S', name:'Schmidt, Lina', az:'JA-2026-0042', bewilligung_von:'2026-01-15', bewilligung_bis:'2026-12-31', stunden_pro_woche:'1', genehmigung:'40 Std bis 12/2026'});
   state.stammdaten.unshift({
     id:uid(), buchstabe:'S', k_nachname:'Schmidt', k_vorname:'Lina', k_gebKlasse:'2015 / 4a',
     v_name:'Andreas Schmidt', v_email:'a.schmidt@example.de', v_telefon:'04121 12345',

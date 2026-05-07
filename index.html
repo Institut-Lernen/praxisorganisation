@@ -108,8 +108,8 @@
 
 <nav class="tabs" id="tabs">
   <button data-tab="erfassen" class="active">Therapieeinheit erfassen</button>
-  <button data-tab="stammdaten">Stammdaten</button>
   <button data-tab="doku">Stundendokumentation</button>
+  <button data-tab="stammdaten">Stammdaten</button>
   <button data-tab="warteliste">Warteliste &amp; Erstkontakt</button>
   <button data-tab="wjh">Wirtschaftliche Jugendhilfe</button>
   <button data-tab="abrechnung">Abrechnung</button>
@@ -1080,6 +1080,44 @@ function renderDokus(){
     tb.appendChild(tr);
   });
 }
+/* Helfer: passenden WJH-Eintrag zu einem Stammdatensatz finden (Match per AZ, dann Name) */
+function findMatchingWJH(stamm){
+  if(!stamm) return null;
+  const az = (stamm.az || '').trim().toLowerCase();
+  if(az){
+    const m = state.wjh.find(w => (w.az||'').toLowerCase().trim() === az);
+    if(m) return m;
+  }
+  const last = (stamm.k_nachname || '').toLowerCase().trim();
+  if(last) return state.wjh.find(w => (w.name||'').toLowerCase().includes(last));
+  return null;
+}
+
+/* Helfer: passenden Stammdatensatz zu einer WJH-Akte finden */
+function findMatchingStamm(wjh){
+  if(!wjh) return null;
+  const az = (wjh.az || '').trim().toLowerCase();
+  if(az){
+    const m = state.stammdaten.find(s => (s.az||'').toLowerCase().trim() === az);
+    if(m) return m;
+  }
+  const lastName = (wjh.name||'').toLowerCase().split(',')[0].trim();
+  if(lastName) return state.stammdaten.find(s => (s.k_nachname||'').toLowerCase().includes(lastName));
+  return null;
+}
+
+/* Vergleich: stimmen die Datenfelder zwischen Stammdaten und WJH überein? */
+function diffStammWJH(stamm, wjh){
+  if(!stamm || !wjh) return [];
+  const diffs = [];
+  if((stamm.az||'').trim() !== (wjh.az||'').trim()) diffs.push(`Aktenzeichen: Stammdaten "${stamm.az||'–'}" ↔ WJH "${wjh.az||'–'}"`);
+  if(stamm.vertragsbeginn && wjh.bewilligung_von && stamm.vertragsbeginn !== wjh.bewilligung_von)
+    diffs.push(`Beginn: Stammdaten ${stamm.vertragsbeginn} ↔ WJH ${wjh.bewilligung_von}`);
+  if(stamm.vertragsende && wjh.bewilligung_bis && stamm.vertragsende !== wjh.bewilligung_bis)
+    diffs.push(`Ende: Stammdaten ${stamm.vertragsende} ↔ WJH ${wjh.bewilligung_bis}`);
+  return diffs;
+}
+
 /* Hilfsfunktion: passende Therapieeinheit zu einer Doku finden */
 function findMatchingEinheit(doku){
   if(!doku || !doku.datum || !doku.klient) return null;
@@ -1224,6 +1262,37 @@ formS.addEventListener('submit', e=>{
   save(); renderStammdaten(); refreshPatientList();
   formS.reset(); formS.querySelector('[name=id]').value='';
   toast('Stammdaten gespeichert');
+
+  // Automatische Verknüpfung mit WJH bei Jugendamt-Vertrag
+  if(o.vertragstyp === 'Jugendamt' && o.az){
+    const existing = findMatchingWJH(o);
+    if(!existing){
+      setTimeout(()=>{
+        if(confirm(`Klient:in „${o.k_nachname}, ${o.k_vorname}" hat Vertragstyp „Jugendamt" und ein Aktenzeichen, aber es gibt noch keine passende WJH-Akte.\n\nWJH-Akte jetzt automatisch anlegen?\n(Beginn/Ende werden aus den Stammdaten übernommen, Therapieeinheiten/Woche musst du im WJH-Tab noch ergänzen.)`)){
+          const w = {
+            id: uid(),
+            alphabet: deriveBuchstabe(o.k_nachname),
+            name: `${o.k_nachname||''}, ${o.k_vorname||''}`,
+            az: o.az,
+            bewilligung_von: o.vertragsbeginn || '',
+            bewilligung_bis: o.vertragsende || '',
+            stunden_pro_woche: '',
+            genehmigung: o.kostenzusage || ''
+          };
+          state.wjh.unshift(w); save(); renderWJH();
+          toast('WJH-Akte angelegt – im WJH-Tab Therapieeinheiten/Woche ergänzen');
+        }
+      }, 300);
+    } else {
+      // Konsistenz prüfen
+      const diffs = diffStammWJH(o, existing);
+      if(diffs.length){
+        setTimeout(()=>{
+          alert(`⚠ Hinweis: Daten zwischen Stammdaten und bestehender WJH-Akte stimmen nicht überein:\n\n• ${diffs.join('\n• ')}\n\nBitte im WJH-Tab abgleichen.`);
+        }, 300);
+      }
+    }
+  }
 });
 
 document.getElementById('btnFromErst').addEventListener('click', ()=>{
@@ -1387,7 +1456,15 @@ function renderStammdaten(){
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${s.buchstabe||''}</td>
-        <td><strong>${s.k_nachname||''}</strong>, ${s.k_vorname||''} ${fehlt?'<span title="Pflichtdokument fehlt">⚠</span>':''}<br><span class="legend">${s.az||''}</span></td>
+        <td><strong>${s.k_nachname||''}</strong>, ${s.k_vorname||''} ${fehlt?'<span title="Pflichtdokument fehlt">⚠</span>':''}${
+          s.vertragstyp==='Jugendamt' ? (
+            findMatchingWJH(s)
+              ? (diffStammWJH(s, findMatchingWJH(s)).length
+                 ? ' <span class="pill warn" title="WJH-Akte vorhanden, aber Daten weichen ab">⚠ WJH</span>'
+                 : ' <span class="pill ok" title="WJH-Akte vorhanden und konsistent">✓ WJH</span>')
+              : ' <span class="pill bad" title="Jugendamt-Vertrag, aber keine WJH-Akte">✗ WJH</span>'
+          ) : ''
+        }<br><span class="legend">${s.az||''}</span></td>
         <td>${s.therapeutin||''}</td>
         <td>${vBox}</td>
         <td>${zeit||'<span class="legend">–</span>'}</td>
@@ -1526,6 +1603,20 @@ formW.addEventListener('submit', e=>{
     toast('Akte gespeichert');
   }
   save(); renderWJH();
+  // Konsistenz-Hinweise
+  const stamm = findMatchingStamm(o);
+  if(!stamm){
+    setTimeout(()=>{
+      toast('⚠ Kein passender Stammdatensatz gefunden – bitte im Stammdaten-Tab anlegen');
+    }, 300);
+  } else {
+    const diffs = diffStammWJH(stamm, o);
+    if(diffs.length){
+      setTimeout(()=>{
+        alert(`⚠ Hinweis: Daten zwischen WJH-Akte und Stammdatensatz "${stamm.k_nachname}, ${stamm.k_vorname}" stimmen nicht überein:\n\n• ${diffs.join('\n• ')}\n\nBitte abgleichen.`);
+      }, 300);
+    }
+  }
   formW.reset();
   document.getElementById('wjh_calc').value = '';
 });
@@ -1565,9 +1656,16 @@ function renderWJH(){
     const zeitraum = (w.bewilligung_von && w.bewilligung_bis)
       ? `<span class="legend">${w.bewilligung_von}<br>bis ${w.bewilligung_bis}</span>`
       : `<span class="legend">${w.genehmigung || '–'}</span>`;
+    const stammMatch = findMatchingStamm(w);
+    const stammDiffs = stammMatch ? diffStammWJH(stammMatch, w) : [];
+    const stammPill = !stammMatch
+      ? '<br><span class="pill bad" style="font-size:10px" title="Kein passender Stammdatensatz">✗ keine Stammdaten</span>'
+      : (stammDiffs.length
+          ? `<br><span class="pill warn" style="font-size:10px" title="Stammdaten gefunden, aber: ${stammDiffs.join(' · ')}">⚠ Differenz</span>`
+          : '<br><span class="pill ok" style="font-size:10px" title="Konsistent">✓ Stammdaten</span>');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${w.alphabet||''}</td><td>${w.name||''}</td><td>${w.az||''}</td>
+      <td>${w.alphabet||''}</td><td>${w.name||''}${stammPill}</td><td>${w.az||''}</td>
       <td>${zeitraum}</td>
       <td>${w.stunden_pro_woche || ''}</td>
       <td>${bewilligt !== null ? '<strong>'+bewilligt+'</strong>' : '<span class="legend">–</span>'}</td>` +

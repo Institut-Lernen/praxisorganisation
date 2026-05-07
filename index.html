@@ -754,7 +754,8 @@
       <button class="btn" data-export="warteliste">⤓ Warteliste &amp; Erstkontakt</button>
       <button class="btn" data-export="wjh">⤓ Wirtschaftliche Jugendhilfe</button>
       <button class="btn" data-export="stammdaten">⤓ Stammdaten (Kontaktdaten)</button>
-      <button class="btn ghost" data-export="all" style="grid-column:1/-1">⤓ Alle fünf Dateien (Sammel-Export)</button>
+      <button class="btn" data-export="abonnement">⤓ Abonnement Lerntherapie (Privat-Verträge)</button>
+      <button class="btn ghost" data-export="all" style="grid-column:1/-1">⤓ Alle sechs Dateien (Sammel-Export)</button>
     </div>
   </div>
 
@@ -2461,6 +2462,106 @@ function exportStammdaten(){
   XLSX.writeFile(wb, 'Stammdaten_Kontaktdaten.xlsx');
 }
 
+/* ---- Abonnement-Excel-Export (Original-Vorlage „Abonnement Lerntherapie") ---- */
+function exportAbonnement(){
+  const wb = XLSX.utils.book_new();
+  // Klient:innen mit Privat-Verträgen (Miniabo, Standard, Privat offen)
+  const klienten = state.stammdaten
+    .filter(canSeeStamm)
+    .filter(s => ['Miniabonnement','Standardvertrag','Privat offen'].includes(s.vertragstyp));
+  // Aktuelles Jahr für die Daten
+  const heute = new Date();
+  const jahr = heute.getFullYear();
+
+  // Sheet 1: Januar–Juni
+  const sheet1 = makeAbonnementSheet(klienten, jahr, 0, 6, [
+    'Januar','Februar','März','April','Mai','Juni'
+  ], 1);
+  XLSX.utils.book_append_sheet(wb, styleSheet(sheet1, {headerRows:1}), '1-6_Abonnement LT');
+
+  // Sheet 2: Juli–Dezember
+  const sheet2 = makeAbonnementSheet(klienten, jahr, 6, 6, [
+    'Juli','August','September','Oktober','November','Dezember'
+  ], 7);
+  XLSX.utils.book_append_sheet(wb, styleSheet(sheet2, {headerRows:1}), '7-12_Abonnement LT');
+
+  XLSX.writeFile(wb, `Abonnement_Lerntherapie_${jahr}.xlsx`);
+}
+
+function makeAbonnementSheet(klienten, jahr, startMonat, anzMonate, monatsNamen, monatNumStart){
+  // Header: Alphabet | Name | Therapeutin | für jeden Monat: [Monat | Stunden N | Summe N | bez]
+  const header = ['Alphabet','Name','Therapeutin'];
+  for(let i=0; i<anzMonate; i++){
+    header.push(monatsNamen[i]);
+    header.push('Stunden ' + (monatNumStart + i));
+    header.push('Summe ' + (monatNumStart + i));
+    header.push('bez');
+  }
+  const rows = [header];
+
+  // Pro Buchstabe gruppieren
+  const grouped = {};
+  klienten.forEach(s => {
+    const b = (s.buchstabe||deriveBuchstabe(s.k_nachname)||'?').toUpperCase();
+    if(!grouped[b]) grouped[b] = [];
+    grouped[b].push(s);
+  });
+
+  Object.keys(grouped).sort().forEach(buchst => {
+    // Buchstaben-Trennzeile
+    rows.push([buchst, '', '', ...Array(anzMonate*4).fill('')]);
+    grouped[buchst].sort((a,c)=>(a.k_nachname||'').localeCompare(c.k_nachname||''))
+      .forEach((s,i) => {
+        const r = [
+          (i+1).toString(),
+          `${s.k_nachname||''}, ${s.k_vorname||''}`,
+          s.therapeutin||''
+        ];
+        // Kumulierte Summe von Jahresbeginn bis zum Vormonat
+        let lauf = 0;
+        for(let m=0; m<startMonat; m++){
+          lauf += monthlyUEFor(s, jahr, m);
+        }
+        for(let i=0; i<anzMonate; i++){
+          const monat = startMonat + i;
+          // Termine-Daten dieses Monats sammeln
+          const termine = einheitenForKlientInMonth(s, jahr, monat);
+          const datums = termine.map(e => e.datum).sort().join(' / ');
+          const ue = termine.reduce((sum,e) => sum + dauerInUE(e.dauer || 45), 0);
+          lauf += ue;
+          // Bezahlt-Status
+          const ymStr = jahr + '-' + String(monat+1).padStart(2,'0');
+          const bezahlt = getZahlung(s.id, ymStr) === 'bezahlt' ? 'x' : '';
+          r.push(datums);
+          r.push(ue ? Math.round(ue*10)/10 : '');
+          r.push(lauf ? Math.round(lauf*10)/10 : '');
+          r.push(bezahlt);
+        }
+        rows.push(r);
+      });
+  });
+
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
+function monthlyUEFor(s, jahr, monat){
+  return einheitenForKlientInMonth(s, jahr, monat)
+    .reduce((sum,e) => sum + dauerInUE(e.dauer || 45), 0);
+}
+
+function einheitenForKlientInMonth(s, jahr, monat){
+  if(!s) return [];
+  const lastName = (s.k_nachname || '').toLowerCase().trim();
+  if(!lastName) return [];
+  return state.einheiten.filter(e => {
+    if(!STATUS_ZAEHLT.includes(e.status)) return false;
+    if(!e.patient || !e.patient.toLowerCase().includes(lastName)) return false;
+    const d = new Date(e.datum);
+    if(isNaN(d)) return false;
+    return d.getFullYear() === jahr && d.getMonth() === monat;
+  });
+}
+
 /* ---- Abrechnungs-Excel-Exports (Faktura/Simba-tauglich) ---- */
 function exportAbrJugendamt(){
   const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
@@ -2553,10 +2654,11 @@ document.querySelectorAll('[data-export]').forEach(b=>{
       else if(t==='warteliste') exportWarteliste();
       else if(t==='wjh') exportWJH();
       else if(t==='stammdaten') exportStammdaten();
+      else if(t==='abonnement') exportAbonnement();
       else if(t==='abr-ja') exportAbrJugendamt();
       else if(t==='abr-ja-detail') exportAbrJugendamtDetail();
       else if(t==='abr-priv') exportAbrPrivat();
-      else if(t==='all'){ exportLT(); exportHonorar(); exportWarteliste(); exportWJH(); exportStammdaten(); }
+      else if(t==='all'){ exportLT(); exportHonorar(); exportWarteliste(); exportWJH(); exportStammdaten(); exportAbonnement(); }
       toast('Excel exportiert');
     }catch(e){ console.error(e); toast('Fehler beim Export – siehe Konsole'); }
   });

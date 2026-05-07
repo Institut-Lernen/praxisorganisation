@@ -1631,12 +1631,15 @@ function dauerInUE(minuten){
 function monthlyHoursForName(name){
   // Liefert pro Monat die Anzahl Therapieeinheiten (UE), nicht Zeitstunden!
   // 45 Min Sitzung = 1 UE, 90 Min = 2 UE
+  // Hinweis: Match nur über Name + zählenden Status — Finanzierungs-Filter entfällt,
+  // damit der WJH-Datensatz konsistent zu Wochenübersicht/Abrechnung/Kontingent ist.
   const m = Array(12).fill(0);
+  if(!name) return m;
+  const lastName = name.split(',')[0].trim().toLowerCase();
   state.einheiten.forEach(e=>{
     if(!STATUS_ZAEHLT.includes(e.status)) return;
-    if(e.finanzierung!=='Jugendamt (WJH)') return;
-    if(!e.patient || !name) return;
-    if(!e.patient.toLowerCase().includes(name.split(',')[0].trim().toLowerCase())) return;
+    if(!e.patient) return;
+    if(!e.patient.toLowerCase().includes(lastName)) return;
     const d = new Date(e.datum); if(isNaN(d)) return;
     m[d.getMonth()] += dauerInUE(e.dauer);
   });
@@ -2118,7 +2121,7 @@ function exportWJH(){
     let lauf = 0;
     m.forEach((h,i)=>{
       const datums = state.einheiten
-        .filter(e=>(e.status==='Durchgeführt'||e.status==='Ersatztermin'||e.status==='Abgesagt durch Eltern') && e.finanzierung==='Jugendamt (WJH)' &&
+        .filter(e=>STATUS_ZAEHLT.includes(e.status) &&
           e.patient && w.name && e.patient.toLowerCase().includes(w.name.split(',')[0].trim().toLowerCase()))
         .filter(e=>{ const d=new Date(e.datum); return d.getMonth()===i; })
         .map(e=>e.datum).sort().join(' / ');

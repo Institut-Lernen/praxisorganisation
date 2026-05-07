@@ -205,6 +205,15 @@
 <!-- ====================== TAB: STAMMDATEN ====================== -->
 <section data-panel="stammdaten" hidden>
   <div id="stammRoleNotice" class="info" style="margin-bottom:0"></div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">Therapieplätze</h2>
+      <span class="right legend">Wird automatisch aus den Stammdaten berechnet · Konfiguration weiter unten</span>
+    </div>
+    <div id="plaetzeOverview" class="grid grid-3" style="margin-top:12px"></div>
+  </div>
+
   <div class="card">
     <h2>Klient:in anlegen / bearbeiten</h2>
     <p class="lead">Zentrale Stammdaten aktiver Therapiekinder – einmal anlegen, dann in <em>Erfassen</em> aus der Auswahl wählen. Pflichtfelder sind markiert.</p>
@@ -289,6 +298,31 @@
         <button type="submit" class="btn">Stammdatensatz speichern</button>
       </div>
       <input type="hidden" name="id">
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">Therapieplätze konfigurieren</h2>
+      <span class="right legend">Maximale Anzahl Klient:innen pro Therapeut:in</span>
+    </div>
+    <div style="overflow-x:auto;margin-top:8px">
+      <table id="therTable">
+        <thead><tr><th>Therapeut:in</th><th>Rolle</th><th>Max Plätze</th><th>Belegt</th><th>Frei</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <form id="formTher" class="grid grid-4" style="margin-top:14px;background:var(--primary-soft);padding:12px;border-radius:8px">
+      <div><label>Name (z.B. „Hohmann, Jeannine")</label><input name="name" required></div>
+      <div>
+        <label>Rolle</label>
+        <select name="rolle">
+          <option value="festangestellt">festangestellt</option>
+          <option value="honorar">Honorarkraft</option>
+        </select>
+      </div>
+      <div><label>Max. Therapieplätze</label><input name="maxPlaetze" type="number" min="1" max="50" required placeholder="z.B. 20 oder 8"></div>
+      <div style="display:flex;align-items:flex-end"><button type="submit" class="btn">Hinzufügen / Aktualisieren</button></div>
     </form>
   </div>
 
@@ -666,6 +700,7 @@
 
 <!-- ====================== TAB: ÜBERSICHT ====================== -->
 <section data-panel="uebersicht" hidden>
+  <div id="auslaufBox" style="display:none"></div>
   <div class="card">
     <h2>Wochenübersicht</h2>
     <div class="row toolbar">
@@ -765,6 +800,10 @@ const defaultState = () => ({
   freieplaetze: [],
   stammdaten: [],
   zahlungen: {},   // {[stammId|YYYY-MM]: 'bezahlt' | 'offen'}
+  therapeuten: [
+    {name:'Hohmann, Jeannine', maxPlaetze:20, rolle:'festangestellt'},
+    {name:'Honorarkraft 1', maxPlaetze:8, rolle:'honorar'},
+  ],
 });
 
 let state = load();
@@ -1258,6 +1297,16 @@ formS.addEventListener('submit', e=>{
       toast(`Honorarkräfte dürfen nur Klient:innen anlegen, bei denen "${state.user.name}" als Therapeutin eingetragen ist.`);
       return;
     }
+    // Prüfung Therapieplätze
+    if(o.therapeutin){
+      const max = maxPlaetzeFor(o.therapeutin);
+      const belegt = belegtePlaetzeFor(o.therapeutin);
+      if(max > 0 && belegt >= max){
+        if(!confirm(`Achtung: ${o.therapeutin} hat bereits ${belegt}/${max} Therapieplätze belegt.\n\nTrotzdem anlegen?`)){
+          return;
+        }
+      }
+    }
     o.id = uid();
     state.stammdaten.unshift(o);
   }
@@ -1392,6 +1441,30 @@ function tageBis(d){
   return Math.round((d - new Date()) / 86400000);
 }
 
+/* Therapieplatz-Verwaltung */
+function belegtePlaetzeFor(therName){
+  if(!therName) return 0;
+  const low = therName.toLowerCase().trim();
+  return state.stammdaten.filter(s => (s.therapeutin||'').toLowerCase().trim() === low).length;
+}
+function maxPlaetzeFor(therName){
+  if(!therName) return 0;
+  const t = (state.therapeuten||[]).find(x => x.name.toLowerCase().trim() === therName.toLowerCase().trim());
+  return t ? parseInt(t.maxPlaetze) || 0 : 0;
+}
+function freiePlaetzeFor(therName){
+  return Math.max(0, maxPlaetzeFor(therName) - belegtePlaetzeFor(therName));
+}
+
+/* WJH-Verträge mit Auslauf < 90 Tagen */
+function auslaufendeWJH(grenze=90){
+  return state.wjh.filter(w=>{
+    if(!w.bewilligung_bis) return false;
+    const t = tageBis(new Date(w.bewilligung_bis));
+    return t !== null && t <= grenze && t >= -7;  // bis 7 Tage nach Ablauf weiter anzeigen
+  }).sort((a,b)=> new Date(a.bewilligung_bis) - new Date(b.bewilligung_bis));
+}
+
 function pillFor(val){
   if(!val || val==='ausstehend') return `<span class="pill bad">${val||'?'}</span>`;
   if(val==='unterschrieben'||val==='liegt vor'||val==='ja') return `<span class="pill ok">${val}</span>`;
@@ -1401,6 +1474,8 @@ function pillFor(val){
 function renderStammdaten(){
   const notice = document.getElementById('stammRoleNotice');
   if(notice) notice.innerHTML = roleNoticeText();
+  renderPlaetzeOverview();
+  renderTherTable();
 
   const q = (document.getElementById('stammSearch').value||'').toLowerCase();
   const tb = document.querySelector('#stammTable tbody'); tb.innerHTML='';
@@ -1487,6 +1562,47 @@ function renderStammdaten(){
 }
 
 document.getElementById('stammSearch').addEventListener('input', renderStammdaten);
+
+// Therapeut:in hinzufügen / aktualisieren
+const formT = document.getElementById('formTher');
+formT.addEventListener('submit', e=>{
+  e.preventDefault();
+  const data = dataFromForm(formT);
+  if(!state.therapeuten) state.therapeuten = [];
+  // Update wenn Name schon existiert
+  const idx = state.therapeuten.findIndex(t => t.name.toLowerCase().trim() === data.name.toLowerCase().trim());
+  if(idx >= 0){
+    state.therapeuten[idx] = {...state.therapeuten[idx], ...data};
+    toast('Therapeut:in aktualisiert');
+  } else {
+    state.therapeuten.push(data);
+    toast('Therapeut:in hinzugefügt');
+  }
+  save(); renderStammdaten();
+  formT.reset();
+});
+
+document.querySelector('#therTable').addEventListener('click', e=>{
+  const editIdx = e.target.dataset.editTher;
+  const delIdx = e.target.dataset.delTher;
+  if(editIdx !== undefined){
+    const t = state.therapeuten[parseInt(editIdx)]; if(!t) return;
+    formT.querySelector('[name=name]').value = t.name;
+    formT.querySelector('[name=rolle]').value = t.rolle || 'festangestellt';
+    formT.querySelector('[name=maxPlaetze]').value = t.maxPlaetze || '';
+    formT.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  if(delIdx !== undefined){
+    if(confirm(`Therapeut:in „${state.therapeuten[parseInt(delIdx)].name}" entfernen?`)){
+      state.therapeuten.splice(parseInt(delIdx), 1);
+      save(); renderStammdaten();
+    }
+  }
+});
+
+// Warnung beim Stammdaten-Speichern wenn Therapeut:in voll ist
+const formS_origSubmit = formS.onsubmit;
 document.querySelector('#stammTable').addEventListener('click', e=>{
   const editId = e.target.dataset.editS;
   const delId = e.target.dataset.delS;
@@ -1505,6 +1621,56 @@ document.querySelector('#stammTable').addEventListener('click', e=>{
     }
   }
 });
+
+function renderPlaetzeOverview(){
+  const div = document.getElementById('plaetzeOverview'); if(!div) return;
+  const ther = state.therapeuten || [];
+  if(!ther.length){
+    div.innerHTML = '<div class="muted" style="grid-column:1/-1;text-align:center;padding:20px">Keine Therapeut:innen konfiguriert. Unten anlegen.</div>';
+    return;
+  }
+  div.innerHTML = ther.map(t=>{
+    const belegt = belegtePlaetzeFor(t.name);
+    const max = parseInt(t.maxPlaetze)||0;
+    const frei = Math.max(0, max - belegt);
+    const quote = max ? belegt/max : 0;
+    const cls = quote >= 1 ? 'bad' : quote >= 0.85 ? 'warn' : 'ok';
+    return `<div class="summary-tile" style="text-align:left;padding:14px">
+      <div style="font-weight:600;color:var(--primary);font-size:14px">${t.name}</div>
+      <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${t.rolle||''}</div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <span style="font-size:24px;font-weight:700">${belegt} / ${max}</span>
+        <span class="pill ${cls}">${frei} frei</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTherTable(){
+  const tb = document.querySelector('#therTable tbody'); if(!tb) return;
+  tb.innerHTML = '';
+  if(!(state.therapeuten||[]).length){
+    tb.innerHTML = '<tr><td colspan="6" class="empty">Noch keine Therapeut:innen konfiguriert.</td></tr>';
+    return;
+  }
+  state.therapeuten.forEach((t,i)=>{
+    const belegt = belegtePlaetzeFor(t.name);
+    const max = parseInt(t.maxPlaetze)||0;
+    const frei = Math.max(0, max - belegt);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${t.name}</strong></td>
+      <td>${t.rolle||''}</td>
+      <td>${max}</td>
+      <td>${belegt}</td>
+      <td><span class="pill ${quote(belegt,max)}">${frei}</span></td>
+      <td>
+        <button class="btn small ghost" data-edit-ther="${i}">Bearbeiten</button>
+        <button class="btn small ghost" data-del-ther="${i}">Entfernen</button>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+function quote(belegt,max){ const q=max?belegt/max:0; return q>=1?'bad':q>=0.85?'warn':'ok'; }
 
 function refreshPatientList(){
   const dl = document.getElementById('patientList');
@@ -1658,9 +1824,19 @@ function renderWJH(){
     const rest = bewilligt !== null ? Math.max(0, bewilligt - verbraucht) : null;
     const quote = bewilligt ? verbraucht / bewilligt : 0;
     const restCls = quote >= 1 ? 'bad' : quote >= 0.85 ? 'warn' : 'ok';
-    const zeitraum = (w.bewilligung_von && w.bewilligung_bis)
-      ? `<span class="legend">${w.bewilligung_von}<br>bis ${w.bewilligung_bis}</span>`
-      : `<span class="legend">${w.genehmigung || '–'}</span>`;
+    let zeitraum;
+    if(w.bewilligung_von && w.bewilligung_bis){
+      const tage = tageBis(new Date(w.bewilligung_bis));
+      let warnPill = '';
+      if(tage !== null){
+        if(tage < 0) warnPill = ` <span class="pill bad" title="Bewilligung abgelaufen">⏰ abgelaufen</span>`;
+        else if(tage <= 30) warnPill = ` <span class="pill bad" title="Verlängerung dringend!">⏰ ${tage} Tage</span>`;
+        else if(tage <= 90) warnPill = ` <span class="pill warn" title="Verlängerung anstehen">⏰ ${tage} Tage</span>`;
+      }
+      zeitraum = `<span class="legend">${w.bewilligung_von}<br>bis ${w.bewilligung_bis}</span>${warnPill}`;
+    } else {
+      zeitraum = `<span class="legend">${w.genehmigung || '–'}</span>`;
+    }
     const stammMatch = findMatchingStamm(w);
     const stammDiffs = stammMatch ? diffStammWJH(stammMatch, w) : [];
     const stammPill = !stammMatch
@@ -1878,7 +2054,35 @@ function isoWeekRange(weekStr){
 }
 function fmtDate(d){ return d? d.toISOString().slice(0,10) : ''; }
 
+function renderAuslaufWarnung(){
+  const box = document.getElementById('auslaufBox'); if(!box) return;
+  const items = auslaufendeWJH(90);
+  if(!items.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display = 'block';
+  const rows = items.map(w=>{
+    const tage = tageBis(new Date(w.bewilligung_bis));
+    const cls = tage < 0 ? 'bad' : tage < 30 ? 'warn' : 'ok';
+    const txt = tage < 0 ? `vor ${Math.abs(tage)} Tagen abgelaufen` :
+                tage === 0 ? 'läuft heute aus' :
+                tage < 30 ? `nur noch ${tage} Tage` :
+                `noch ${tage} Tage`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <strong>${w.name||'?'}</strong>
+        <span class="legend"> · ${w.az||'kein AZ'} · bis ${w.bewilligung_bis}</span>
+      </div>
+      <span class="pill ${cls}">${txt}</span>
+    </div>`;
+  }).join('');
+  box.innerHTML = `<div class="card" style="border-left:4px solid var(--warn);background:#fef9e7">
+    <h2 style="margin:0;color:var(--warn)">⏰ WJH-Verträge laufen aus</h2>
+    <p class="lead">Diese ${items.length} Bewilligung${items.length>1?'en':''} ${items.length>1?'enden':'endet'} innerhalb der nächsten 90 Tage. Verlängerung oder Neubesetzung rechtzeitig planen.</p>
+    ${rows}
+  </div>`;
+}
+
 function renderUebersicht(){
+  renderAuslaufWarnung();
   const fSel = document.getElementById('filterTherapeut');
   const therapeuten = [...new Set(state.einheiten.map(e=>e.therapeut).filter(Boolean))];
   const cur = fSel.value;

@@ -195,7 +195,7 @@
     <table id="einheitenTable">
       <thead><tr>
         <th>Datum</th><th>Wochentag</th><th>Uhrzeit</th><th>Therapeut:in</th>
-        <th>Patient</th><th>Dauer</th><th>Leistung</th><th>Status</th><th></th>
+        <th>Patient</th><th>Dauer</th><th>Leistung</th><th>Status</th><th>Doku</th><th></th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -244,6 +244,7 @@
       <div><label>Vertragsbeginn</label><input name="vertragsbeginn" type="date" id="vertragsbeginn"></div>
       <div><label>Kontingent (Std.)</label><input name="kontingent" type="number" min="0" max="500" id="kontingent" placeholder="36"></div>
       <div><label>Stundensatz (€)</label><input name="stundensatz" type="number" min="0" max="500" step="0.01" placeholder="z. B. 65,00"></div>
+      <div><label>Monatspauschale (€) <span class="pill">Abo</span></label><input name="monatspauschale" type="number" min="0" max="2000" step="0.01" id="monatspauschale" placeholder="z. B. 305,00"></div>
       <div style="grid-column:1/-1" class="legend" id="vertragsHinweis">
         Vertragsende und verbleibendes Kontingent werden automatisch berechnet und in der Übersicht angezeigt.
       </div>
@@ -445,7 +446,7 @@
   <div class="card">
     <h2>Gespeicherte Dokumentationen</h2>
     <table id="dokuTable">
-      <thead><tr><th>Datum</th><th>Klient:in</th><th>Schwerpunkt</th><th>Sitzung</th><th>Therapeut:in</th><th></th></tr></thead>
+      <thead><tr><th>Datum</th><th>Klient:in</th><th>Schwerpunkt</th><th>Sitzung</th><th>Therapeut:in</th><th>Termin</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -866,18 +867,26 @@ function renderEinheiten(){
   tb.innerHTML = '';
   const visible = state.einheiten.filter(canSeeEinheit);
   if(!visible.length){
-    tb.innerHTML = '<tr><td colspan="9" class="empty">Noch keine Einheiten für diese Rolle/diesen Namen.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="10" class="empty">Noch keine Einheiten für diese Rolle/diesen Namen.</td></tr>';
   }else{
     visible.slice(0,30).forEach(e=>{
       const tr = document.createElement('tr');
       const status = (e.status==='Durchgeführt'||e.status==='Ersatztermin') ? 'ok'
         : (e.status==='Abgesagt durch Therapeut:in' ? 'bad'
         : (e.status==='Abgesagt durch Eltern' ? 'warn' : 'warn'));
+      const hasDoku = state.dokus.some(d=>{
+        if(d.datum !== e.datum) return false;
+        if(!d.klient || !e.patient) return false;
+        const k = d.klient.toLowerCase(), p = e.patient.toLowerCase();
+        return k === p || p.includes(k.split(',')[0].trim()) || k.includes(p.split(',')[0].trim());
+      });
+      const dokuPill = hasDoku ? '<span class="pill ok" title="Stundendoku vorhanden">✓ Doku</span>' : '<span class="pill" title="Noch keine Stundendokumentation" style="opacity:.6">○ Doku</span>';
       tr.innerHTML = `
         <td>${e.datum||''}</td><td>${e.wochentag||''}</td><td>${e.uhrzeit||''}</td>
         <td>${e.therapeut||''}</td><td>${e.patient||''}</td>
         <td>${e.dauer||''}</td><td>${e.leistung||''}</td>
         <td><span class="pill ${status}">${e.status||''}</span></td>
+        <td>${dokuPill}</td>
         <td><button class="btn small ghost" data-del="${e.id}">Löschen</button></td>`;
       tb.appendChild(tr);
     });
@@ -993,6 +1002,30 @@ formD.addEventListener('submit', e=>{
     toast('Dokumentation gespeichert');
   }
   save(); renderDokus();
+  // Nach dem Speichern prüfen, ob eine passende Therapieeinheit existiert
+  const match = findMatchingEinheit(o);
+  if(!match && o.datum && o.klient){
+    setTimeout(()=>{
+      if(confirm(`Hinweis: Für ${o.klient} am ${o.datum} ist noch keine Therapieeinheit erfasst.\n\nJetzt zur Erfassen-Maske wechseln und Termin anlegen?`)){
+        document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='erfassen'));
+        document.querySelectorAll('section[data-panel]').forEach(p=>p.hidden = p.dataset.panel !== 'erfassen');
+        const f = document.getElementById('formEinheit');
+        f.reset();
+        const set = (n,v)=>{ const el = f.querySelector(`[name="${n}"]`); if(el && v!==undefined) el.value = v||''; };
+        set('datum', o.datum); set('uhrzeit', o.uhrzeit);
+        set('wochentag', autoWeekday(o.datum));
+        set('therapeut', o.therapeut || state.user.name);
+        set('patient', o.klient); set('dauer', o.dauer || 45);
+        set('leistung', o.schwerpunkt==='LRS' ? 'Lerntherapie LRS' : 'Lerntherapie Dyskalkulie');
+        set('status', 'Durchgeführt');
+        f.scrollIntoView({behavior:'smooth', block:'start'});
+      }
+    }, 300);
+  } else if(match && o.uhrzeit && match.uhrzeit && !match.uhrzeit.includes(o.uhrzeit.slice(0,5)) && !o.uhrzeit.includes(match.uhrzeit.slice(0,5))){
+    setTimeout(()=>{
+      toast(`⚠ Termin gefunden, aber Uhrzeit weicht ab: Termin ${match.uhrzeit}, Doku ${o.uhrzeit}`);
+    }, 300);
+  }
   formD.reset();
   formD.querySelector('[name=id]').value = '';
   rebuildObs();
@@ -1006,21 +1039,46 @@ document.getElementById('dokuCancelEdit').addEventListener('click', ()=>{
 function renderDokus(){
   const tb = document.querySelector('#dokuTable tbody'); tb.innerHTML='';
   if(!state.dokus.length){
-    tb.innerHTML = '<tr><td colspan="6" class="empty">Noch keine Dokumentation erfasst.</td></tr>'; return;
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Noch keine Dokumentation erfasst.</td></tr>'; return;
   }
   state.dokus.forEach(d=>{
+    const match = findMatchingEinheit(d);
+    let linkBox;
+    if(match){
+      const uhrPasst = !d.uhrzeit || !match.uhrzeit || match.uhrzeit.includes(d.uhrzeit.slice(0,5)) || d.uhrzeit.includes(match.uhrzeit.slice(0,5));
+      linkBox = uhrPasst
+        ? '<span class="pill ok" title="Therapieeinheit gefunden">✓ Termin</span>'
+        : `<span class="pill warn" title="Termin gefunden, aber Uhrzeit weicht ab (${match.uhrzeit})">⚠ Uhrzeit</span>`;
+    } else {
+      linkBox = `<span class="pill bad" title="Keine passende Therapieeinheit gefunden">✗ kein Termin</span>`;
+    }
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${d.datum||''}</td><td>${d.klient||''}</td>
       <td><span class="pill">${d.schwerpunkt||''}</span></td>
       <td>${d.sitzungNr||''}</td><td>${d.therapeut||''}</td>
+      <td>${linkBox}</td>
       <td>
         <button class="btn small ghost" data-edit-doku="${d.id}">Bearbeiten</button>
+        ${match ? '' : `<button class="btn small" data-create-einheit="${d.id}" title="Fehlende Therapieeinheit jetzt erfassen">+ Termin</button>`}
         <button class="btn small ghost" data-del-doku="${d.id}">Löschen</button>
       </td>`;
     tb.appendChild(tr);
   });
 }
+/* Hilfsfunktion: passende Therapieeinheit zu einer Doku finden */
+function findMatchingEinheit(doku){
+  if(!doku || !doku.datum || !doku.klient) return null;
+  const klientLow = doku.klient.toLowerCase().trim();
+  const lastOnly = klientLow.split(',')[0].trim();
+  return state.einheiten.find(e=>{
+    if(e.datum !== doku.datum) return false;
+    if(!e.patient) return false;
+    const p = e.patient.toLowerCase();
+    return p === klientLow || (lastOnly && p.includes(lastOnly));
+  });
+}
+
 document.querySelector('#dokuTable').addEventListener('click', e=>{
   const editId = e.target.dataset.editDoku;
   const delId = e.target.dataset.delDoku;
@@ -1048,6 +1106,27 @@ document.querySelector('#dokuTable').addEventListener('click', e=>{
     formD.querySelector('[name=id]').value = d.id;
     formD.scrollIntoView({behavior:'smooth', block:'start'});
     toast('Dokumentation geladen – nach Änderungen speichern');
+    return;
+  }
+  const createEinheitId = e.target.dataset.createEinheit;
+  if(createEinheitId){
+    const d = state.dokus.find(x=>x.id===createEinheitId); if(!d) return;
+    // Wechsel zum Erfassen-Tab und Felder vorbefüllen
+    document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='erfassen'));
+    document.querySelectorAll('section[data-panel]').forEach(p=>p.hidden = p.dataset.panel !== 'erfassen');
+    const f = document.getElementById('formEinheit');
+    f.reset();
+    const set = (n,v)=>{ const el = f.querySelector(`[name="${n}"]`); if(el && v!==undefined) el.value = v||''; };
+    set('datum', d.datum);
+    set('uhrzeit', d.uhrzeit);
+    set('wochentag', d.datum ? autoWeekday(d.datum) : '');
+    set('therapeut', d.therapeut || state.user.name);
+    set('patient', d.klient);
+    set('dauer', d.dauer || 45);
+    set('leistung', d.schwerpunkt==='LRS' ? 'Lerntherapie LRS' : 'Lerntherapie Dyskalkulie');
+    set('status', 'Durchgeführt');
+    f.scrollIntoView({behavior:'smooth', block:'start'});
+    toast('Felder aus Doku übernommen – prüfen und speichern');
     return;
   }
   if(delId){
@@ -1081,12 +1160,16 @@ function updateVertragsHinweis(){
   const beginn = document.getElementById('vertragsbeginn').value;
   const kont = document.getElementById('kontingent');
   if(typ === 'Miniabonnement' && !kont.value) kont.value = '36';
+  const pausch = document.getElementById('monatspauschale');
+  if(typ === 'Miniabonnement' && !pausch.value) pausch.value = '305.00';
   let h = '';
   if(beginn){
     const d = new Date(beginn);
     if(typ === 'Miniabonnement'){
       const e = new Date(d); e.setMonth(e.getMonth()+12);
-      h = `Vertragsende automatisch: <strong>${e.toISOString().slice(0,10)}</strong> · Kontingent: <strong>${kont.value||36} Stunden</strong>`;
+      h = `Vertragsende automatisch: <strong>${e.toISOString().slice(0,10)}</strong> · Kontingent: <strong>${kont.value||36} Stunden</strong> · Monatspauschale: <strong>${pausch.value||305} €</strong>`;
+    } else if(pausch.value){
+      h = `Vertragsbeginn: ${beginn}. Monatspauschale: <strong>${pausch.value} €</strong>`;
     } else {
       h = `Vertragsbeginn: ${beginn}. Bei diesem Typ wird kein automatisches Vertragsende berechnet.`;
     }
@@ -1094,7 +1177,7 @@ function updateVertragsHinweis(){
   document.getElementById('vertragsHinweis').innerHTML = h ||
     'Vertragsende und verbleibendes Kontingent werden automatisch berechnet und in der Übersicht angezeigt.';
 }
-['vertragstyp','vertragsbeginn','kontingent'].forEach(id=>{
+['vertragstyp','vertragsbeginn','kontingent','monatspauschale'].forEach(id=>{
   document.getElementById(id).addEventListener('change', updateVertragsHinweis);
   document.getElementById(id).addEventListener('input', updateVertragsHinweis);
 });
@@ -1509,22 +1592,30 @@ function renderAbrechnung(){
     const std = ein.length;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std * satz;
-    pSumStd += std; pSumBetrag += betrag; pTotalCount++;
+    // Pauschale ODER Stunden×Satz - Pauschale hat Vorrang, wenn gesetzt
+    const pauschale = parseFloat(s.monatspauschale)||0;
+    const isAbo = pauschale > 0;
+    const betragFinal = isAbo ? pauschale : betrag;
+    pSumStd += std; pSumBetrag += betragFinal; pTotalCount++;
     const status = getZahlung(s.id, ym);
-    if(status==='bezahlt'){ pPaidBetrag += betrag; pPaidCount++; }
-    // Rechnungsadresse: bevorzugt Mutter, sonst Vater
+    if(status==='bezahlt'){ pPaidBetrag += betragFinal; pPaidCount++; }
     const empf = s.m_name || s.v_name || '';
     const empfAdr = s.m_adresse || s.v_adresse || '';
-    const cls = status==='bezahlt' ? 'ok' : 'bad';
     const label = status==='bezahlt' ? '✓ bezahlt' : '✗ offen';
+    const betragSpalte = isAbo
+      ? `<strong>${fmtEUR(pauschale)}</strong><br><span class="legend">Pauschale (Abo)</span>`
+      : (satz ? `<strong>${fmtEUR(betrag)}</strong>` : '<span class="pill bad">Satz fehlt</span>');
+    const satzSpalte = isAbo
+      ? `<span class="legend">— (Pauschale)</span>`
+      : (satz ? fmtEUR(satz) : '<span class="pill bad">fehlt</span>');
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${s.k_nachname||''}, ${s.k_vorname||''}</strong></td>
       <td>${empf}<br><span class="legend">${empfAdr}</span></td>
       <td>${s.vertragstyp||''}</td>
       <td>${std}</td>
-      <td>${satz?fmtEUR(satz):'<span class="pill bad">Satz fehlt</span>'}</td>
-      <td><strong>${fmtEUR(betrag)}</strong></td>
+      <td>${satzSpalte}</td>
+      <td>${betragSpalte}</td>
       <td><button class="btn small ${status==='bezahlt'?'':'ghost'}"
                  style="${status==='bezahlt'?'background:var(--good)':'border-color:var(--bad);color:var(--bad)'}"
                  data-toggle-pay="${s.id}" title="Klick zum Wechseln">${label}</button></td>`;
@@ -1877,7 +1968,7 @@ function exportAbrPrivat(){
   const wb = XLSX.utils.book_new();
   const rows = [['Klient:in (Nachname)','Klient:in (Vorname)','Therapeut:in',
                  'Rechnungsempfänger','Adresse','E-Mail',
-                 'Vertragstyp','Leistungszeitraum','Stunden','Stundensatz','Gesamtbetrag',
+                 'Vertragstyp','Leistungszeitraum','Stunden','Stundensatz','Monatspauschale','Abrechnungsmodus','Gesamtbetrag',
                  'Bezahlt','Buchungstext','Kontingent','Verbraucht','Verbleibend']];
   state.stammdaten.filter(canSeeStamm).filter(isPrivatKlient).forEach(s=>{
     const ein = einheitenInMonat(s, ym);
@@ -1890,10 +1981,13 @@ function exportAbrPrivat(){
     const adr = s.m_adresse || s.v_adresse || '';
     const mail = s.m_email || s.v_email || '';
     const bezahlt = getZahlung(s.id, ym);
+    const pauschale = parseFloat(s.monatspauschale)||0;
+    const isAbo = pauschale > 0;
+    const betragFinal = isAbo ? pauschale : betrag;
     rows.push([
       s.k_nachname||'', s.k_vorname||'', s.therapeutin||'',
       empf, adr, mail,
-      s.vertragstyp||'', ym, std, satz, betrag,
+      s.vertragstyp||'', ym, std, satz, pauschale||'', isAbo?'Pauschale (Abo)':'Stunden×Satz', betragFinal,
       bezahlt,
       `Lerntherapie ${s.k_nachname||''} ${s.k_vorname||''} ${ym}`,
       k.kontingent||'', k.verbraucht||0,
@@ -1989,7 +2083,7 @@ document.getElementById('btnDemo').addEventListener('click', ()=>{
     m_name:'Anna Muster', m_adresse:'Mühlenweg 4, 25335 Elmshorn', m_email:'a.muster@example.de',
     therapeutin:'Hohmann, Jeannine', dsgvo:'ja', vertrag:'unterschrieben',
     schweigepflicht:'liegt vor', kostenzusage:'Privat',
-    vertragstyp:'Miniabonnement', vertragsbeginn:'2026-02-01', kontingent:'36', stundensatz:'65.00'
+    vertragstyp:'Miniabonnement', vertragsbeginn:'2026-02-01', kontingent:'36', stundensatz:'65.00', monatspauschale:'305.00'
   });
   state.einheiten.unshift({
     id:uid(), datum:fmtDate(today), wochentag:autoWeekday(fmtDate(today)),

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Praxis">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#b81f29">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   :root{
     /* Institut Lernen – warme Rot-Palette, abgeleitet aus dem Logo */
@@ -2216,6 +2216,85 @@ document.getElementById('btnPrintReport').addEventListener('click', ()=>{
    ============================================================ */
 const MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
+/* Style-Helper: macht aus einer Roh-Sheet eine schön formatierte Tabelle.
+   Header-Zeile rot, Daten mit Zebra-Streifen, dünner Rahmen, Auto-Spaltenbreiten. */
+const STYLE = {
+  primary: 'B81F29',
+  primaryDark: '8E1820',
+  soft: 'FBEAEC',
+  ink: '26181A',
+  border: 'D9C4C7',
+  white: 'FFFFFF',
+};
+
+function styleSheet(ws, opts){
+  opts = opts || {};
+  const headerRows = opts.headerRows != null ? opts.headerRows : 1;
+  const cols = opts.columnWidths;
+  const sumRowIdx = opts.sumRowIdx;       // optionale Index der Summenzeile
+  const skipRows = opts.skipRows || [];   // Zeilen, die als Trenn-/Kategorienzeile besondere Style haben
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for(let R = range.s.r; R <= range.e.r; R++){
+    for(let C = range.s.c; C <= range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R, c:C});
+      if(!ws[addr]) ws[addr] = {t:'s', v:''};
+      const cell = ws[addr];
+      const isHeader = R < headerRows;
+      const isSkip = skipRows.includes(R);
+      const isSum = sumRowIdx === R;
+      const isAlt = !isHeader && !isSum && !isSkip && (R - headerRows) % 2 === 1;
+      cell.s = {
+        font: {
+          name: 'Calibri',
+          sz: isHeader ? 11 : 10,
+          bold: isHeader || isSum || isSkip,
+          color: { rgb: isHeader ? STYLE.white : (isSkip ? STYLE.primaryDark : STYLE.ink) }
+        },
+        fill: {
+          patternType: 'solid',
+          fgColor: { rgb: isHeader ? STYLE.primary : (isSum ? STYLE.soft : (isSkip ? 'F5F5F5' : (isAlt ? STYLE.soft : STYLE.white))) }
+        },
+        alignment: {
+          vertical: 'center',
+          horizontal: isHeader ? 'center' : (typeof cell.v === 'number' && !isNaN(cell.v) ? 'right' : 'left'),
+          wrapText: isHeader
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: STYLE.border } },
+          bottom: { style: isHeader ? 'medium' : 'thin', color: { rgb: isHeader ? STYLE.primaryDark : STYLE.border } },
+          left: { style: 'thin', color: { rgb: STYLE.border } },
+          right: { style: 'thin', color: { rgb: STYLE.border } }
+        }
+      };
+    }
+  }
+  // Header-Zeilenhöhe
+  if(!ws['!rows']) ws['!rows'] = [];
+  for(let i=0; i<headerRows; i++){
+    ws['!rows'][i] = { hpx: 28 };
+  }
+  // Spaltenbreiten
+  if(cols){
+    ws['!cols'] = cols.map(w => ({wch: w}));
+  } else {
+    const autoCols = [];
+    for(let C = range.s.c; C <= range.e.c; C++){
+      let maxLen = 6;
+      for(let R = range.s.r; R <= range.e.r; R++){
+        const addr = XLSX.utils.encode_cell({r:R, c:C});
+        const v = ws[addr] && ws[addr].v;
+        if(v != null){
+          const len = String(v).length;
+          if(len > maxLen) maxLen = len;
+        }
+      }
+      autoCols.push({wch: Math.min(Math.max(maxLen + 2, 8), 38)});
+    }
+    ws['!cols'] = autoCols;
+  }
+  return ws;
+}
+
 function buildLTSheet(weekday, includeTherapeutCol){
   const header = includeTherapeutCol
     ? ['Wochentag','Name/Uhrzeit','Therapeutin', ...MONATE,'Dez 25','x']
@@ -2249,7 +2328,7 @@ function buildLTSheet(weekday, includeTherapeutCol){
     rows.push(r);
   });
   if(rows.length===1) rows.push([weekday, '', '', ...Array(MONATE.length+2).fill('')]);
-  return XLSX.utils.aoa_to_sheet(rows);
+  return styleSheet(XLSX.utils.aoa_to_sheet(rows));
 }
 
 function exportLT(){
@@ -2289,13 +2368,13 @@ function exportWarteliste(){
       k.warteliste, k.termin_eg, k.zug_therapeut,
     ]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Erstkontakt');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows)), 'Erstkontakt');
 
   const wRows = [['NR','Datum','Name','Therapeutin','Finanzierung']];
   state.erstkontakte.filter(k=>k.warteliste==='ja').forEach(k=>{
     wRows.push([k.nr, k.datum, [k.k_vorname,k.k_nachname].filter(Boolean).join(' '), k.zug_therapeut, k.bezahlung]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wRows), 'Warteliste');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(wRows)), 'Warteliste');
 
   const fRows = [['Therapeut:in','Patient','Beginn','Privat','Jugendamt','Ende Genehmigung','Ersatz']];
   const therapeuten = [...new Set(state.einheiten.map(e=>e.therapeut).filter(Boolean))];
@@ -2307,7 +2386,7 @@ function exportWarteliste(){
       fRows.push([t, p, datums[0]||'', '', '', '', '']);
     });
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fRows), 'Freie Plätze');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(fRows)), 'Freie Plätze');
   XLSX.writeFile(wb, 'Warteliste.xlsx');
 }
 
@@ -2336,7 +2415,7 @@ function exportWJH(){
     r.push(w.genehmigung||'');
     rows.push(r);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Wirtschaftliche Jugendhilfe');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows)), 'Wirtschaftliche Jugendhilfe');
   XLSX.writeFile(wb, 'Wirtschaftliche_Jugendhilfe.xlsx');
 }
 
@@ -2377,7 +2456,7 @@ function exportStammdaten(){
         ]);
       });
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Kontaktdaten ');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows), {headerRows:4, skipRows:Array.from({length:rows.length},(_,i)=>i).filter(i=>i>=4 && rows[i].length===24 && !rows[i][1])}), 'Kontaktdaten ');
   XLSX.writeFile(wb, 'Stammdaten_Kontaktdaten.xlsx');
 }
 
@@ -2404,7 +2483,7 @@ function exportAbrJugendamt(){
       k.verbleibend!==null ? k.verbleibend : '', s.kostenzusage||''
     ]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Sammelaufstellung');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows)), 'Sammelaufstellung');
   XLSX.writeFile(wb, `Abrechnung_Jugendamt_${ym}.xlsx`);
 }
 
@@ -2425,7 +2504,7 @@ function exportAbrJugendamtDetail(){
       ]);
     });
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Einzelpositionen');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows)), 'Einzelpositionen');
   XLSX.writeFile(wb, `Abrechnung_Jugendamt_Detail_${ym}.xlsx`);
 }
 
@@ -2460,7 +2539,7 @@ function exportAbrPrivat(){
       k.verbleibend!==null ? k.verbleibend : ''
     ]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Privat-Abrechnung');
+  XLSX.utils.book_append_sheet(wb, styleSheet(XLSX.utils.aoa_to_sheet(rows)), 'Privat-Abrechnung');
   XLSX.writeFile(wb, `Abrechnung_Privat_${ym}.xlsx`);
 }
 

@@ -45,7 +45,106 @@
   .grid-2{grid-template-columns:repeat(2,1fr)}
   .grid-3{grid-template-columns:repeat(3,1fr)}
   .grid-4{grid-template-columns:repeat(4,1fr)}
-  @media(max-width:760px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+  @media(max-width:760px){
+    /* Layout-Anpassungen: alle Grids auf eine Spalte */
+    .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+
+    /* Header kompakter */
+    header{padding:8px 12px;gap:8px}
+    header .logo{height:38px}
+    header .brand{font-size:14px}
+    header .brand small{display:none}
+    header .who{width:100%;order:99;flex-wrap:wrap;gap:6px;margin-left:0}
+    header .who label{font-size:11px;margin:0}
+    header .who select,header .who input{flex:1;min-width:0;font-size:15px}
+
+    /* Tabs: scroll-snap und größere Touch-Targets */
+    nav.tabs{scroll-snap-type:x mandatory;padding:0 4px;-webkit-overflow-scrolling:touch}
+    nav.tabs button{scroll-snap-align:start;padding:14px 14px;font-size:13px;flex-shrink:0}
+
+    /* Inputs/Buttons größer (verhindert iOS-Zoom durch font-size 16px) */
+    input,select,textarea{font-size:16px;min-height:44px;padding:10px 12px}
+    button.btn{min-height:44px;padding:11px 18px;font-size:15px}
+    button.btn.small{min-height:36px;padding:8px 12px;font-size:13px}
+
+    /* Cards kompakter */
+    .card{padding:14px;margin-bottom:14px}
+    .card h2{font-size:16px}
+
+    /* Tabs-Leiste: Untertitel verstecken auf Mobile */
+    main{padding:0 8px 60px}
+
+    /* Tabellen: in mobile-friendly Karten-Layout umwandeln */
+    table.responsive{font-size:13px}
+    table.responsive thead{display:none}
+    table.responsive,
+    table.responsive tbody,
+    table.responsive tr,
+    table.responsive td{display:block;width:100%;box-sizing:border-box}
+    table.responsive tr{
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:10px 12px;
+      margin-bottom:10px;
+      background:#fff;
+      box-shadow:var(--shadow)
+    }
+    table.responsive tr:hover td{background:transparent}
+    table.responsive td{
+      border:none;
+      padding:4px 0;
+      text-align:left
+    }
+    table.responsive td:first-child{
+      font-weight:600;
+      color:var(--primary);
+      font-size:14px;
+      border-bottom:1px solid var(--border);
+      padding-bottom:6px;
+      margin-bottom:4px
+    }
+    table.responsive td:empty{display:none}
+    table.responsive td[data-label]::before{
+      content:attr(data-label) ": ";
+      font-weight:500;
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.3px
+    }
+
+    /* Wichtige Buttons in Forms „sticky" am unteren Rand des Cards */
+    form .row[style*="justify-content:flex-end"]{
+      position:sticky;
+      bottom:0;
+      background:#fff;
+      padding:12px 0;
+      margin-top:0;
+      border-top:1px solid var(--border);
+      z-index:5
+    }
+
+    /* Summary-Tile schmaler */
+    .summary-tile{padding:10px}
+    .summary-tile .num{font-size:22px}
+    .summary-tile .lbl{font-size:11px}
+
+    /* Pills etwas größer für Lesbarkeit */
+    .pill{padding:3px 9px;font-size:11px}
+
+    /* Stundendoku Beobachtungs-Tabellen kompakter */
+    .obs-table{font-size:11px}
+    .obs-table th,.obs-table td{padding:3px 4px}
+  }
+
+  /* Kleine Phones (z. B. iPhone SE) */
+  @media(max-width:380px){
+    header .logo{height:32px}
+    header .brand{font-size:13px}
+    nav.tabs button{padding:12px 10px;font-size:12px}
+    main{padding:0 4px 60px}
+    .card{padding:10px}
+  }
   label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;font-weight:500}
   input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;background:#fff}
   textarea{min-height:70px;resize:vertical}
@@ -192,7 +291,7 @@
     <div class="row"><h2 style="margin:0">Letzte Einheiten</h2>
       <span class="right muted" id="einheitenCount"></span>
     </div>
-    <table id="einheitenTable">
+    <table id="einheitenTable" class="responsive">
       <thead><tr>
         <th>Datum</th><th>Wochentag</th><th>Uhrzeit</th><th>Therapeut:in</th>
         <th>Patient</th><th>Dauer</th><th>Leistung</th><th>Status</th><th>Doku</th><th></th>
@@ -336,7 +435,7 @@
       <span class="right muted legend">⚠ = Pflichtdokument fehlt</span>
     </div>
     <div style="overflow-x:auto">
-      <table id="stammTable">
+      <table id="stammTable" class="responsive">
         <thead><tr>
           <th>Buchst.</th><th>Kind</th><th>Therapeut:in</th>
           <th>Vertrag</th><th>Beginn → Ende</th><th>Therapieeinheiten</th>
@@ -480,7 +579,7 @@
 
   <div class="card">
     <h2>Gespeicherte Dokumentationen</h2>
-    <table id="dokuTable">
+    <table id="dokuTable" class="responsive">
       <thead><tr><th>Datum</th><th>Klient:in</th><th>Schwerpunkt</th><th>Sitzung</th><th>Therapeut:in</th><th>Termin</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
@@ -598,7 +697,7 @@
     <h2>Aktenübersicht – Stunden je Monat</h2>
     <p class="muted" style="margin-top:0">Stunden werden aus durchgeführten Therapieeinheiten mit Finanzierung „Jugendamt (WJH)" berechnet (Patient-Match über Name).</p>
     <div style="overflow-x:auto">
-      <table id="wjhTable">
+      <table id="wjhTable" class="responsive">
         <thead><tr>
           <th>A</th><th>Name</th><th>Aktenzeichen</th>
           <th>Bewilligungs­zeitraum</th><th>Therapieeinh./Wo</th><th>Bewilligt gesamt</th>
@@ -630,7 +729,7 @@
     <h2>Jugendamt-Zusammenstellung pro Aktenzeichen</h2>
     <p class="muted" style="margin-top:0">Filter: nur Klient:innen mit Vertragstyp „Jugendamt" oder Finanzierung „Jugendamt (WJH)" in den Einheiten dieses Monats.</p>
     <div style="overflow-x:auto">
-      <table id="abrJATable">
+      <table id="abrJATable" class="responsive">
         <thead><tr>
           <th>Aktenzeichen</th>
           <th>Klient:in</th>
@@ -664,7 +763,7 @@
     <p class="muted" style="margin-top:0">Klient:innen mit Vertragstyp „Miniabonnement", „Standardvertrag" oder „Privat offen". Stunden × Stundensatz = Betrag.</p>
     <div style="overflow-x:auto">
       <p class="legend" style="margin:0 0 8px">Eltern zahlen per Dauerauftrag zu Monatsbeginn. Klick auf den Status wechselt zwischen <em>bezahlt</em> und <em>offen</em>.</p>
-      <table id="abrPrivTable">
+      <table id="abrPrivTable" class="responsive">
         <thead><tr>
           <th>Klient:in</th>
           <th>Eltern (Rechnungsadresse)</th>
@@ -719,7 +818,7 @@
       <div class="summary-tile"><div class="num" id="kpiPat">0</div><div class="lbl">Klient:innen</div></div>
     </div>
     <hr>
-    <table id="weekTable">
+    <table id="weekTable" class="responsive">
       <thead><tr><th>Tag</th><th>Datum</th><th>Uhrzeit</th><th>Therapeut:in</th><th>Patient</th><th>Leistung</th><th>Min.</th><th>Status</th></tr></thead>
       <tbody></tbody>
     </table>
@@ -940,11 +1039,15 @@ function renderEinheiten(){
       });
       const dokuPill = hasDoku ? '<span class="pill ok" title="Stundendoku vorhanden">✓ Doku</span>' : '<span class="pill" title="Noch keine Stundendokumentation" style="opacity:.6">○ Doku</span>';
       tr.innerHTML = `
-        <td>${e.datum||''}</td><td>${e.wochentag||''}</td><td>${e.uhrzeit||''}</td>
-        <td>${e.therapeut||''}</td><td>${e.patient||''}</td>
-        <td>${e.dauer||''}</td><td>${e.leistung||''}</td>
-        <td><span class="pill ${status}">${e.status||''}</span></td>
-        <td>${dokuPill}</td>
+        <td>${e.datum||''} <span style="color:var(--muted);font-size:12px">${e.wochentag||''} · ${e.uhrzeit||''}</span></td>
+        <td data-label="Wochentag">${e.wochentag||''}</td>
+        <td data-label="Uhrzeit">${e.uhrzeit||''}</td>
+        <td data-label="Therapeut:in">${e.therapeut||''}</td>
+        <td data-label="Patient">${e.patient||''}</td>
+        <td data-label="Dauer (Min)">${e.dauer||''}</td>
+        <td data-label="Leistung">${e.leistung||''}</td>
+        <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>
+        <td data-label="Doku">${dokuPill}</td>
         <td><button class="btn small ghost" data-del="${e.id}">Löschen</button></td>`;
       tb.appendChild(tr);
     });
@@ -1112,10 +1215,12 @@ function renderDokus(){
     }
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${d.datum||''}</td><td>${d.klient||''}</td>
-      <td><span class="pill">${d.schwerpunkt||''}</span></td>
-      <td>${d.sitzungNr||''}</td><td>${d.therapeut||''}</td>
-      <td>${linkBox}</td>
+      <td>${d.klient||''} <span style="color:var(--muted);font-size:12px">${d.datum||''}</span></td>
+      <td data-label="Klient:in">${d.klient||''}</td>
+      <td data-label="Schwerpunkt"><span class="pill">${d.schwerpunkt||''}</span></td>
+      <td data-label="Sitzung">${d.sitzungNr||''}</td>
+      <td data-label="Therapeut:in">${d.therapeut||''}</td>
+      <td data-label="Termin-Match">${linkBox}</td>
       <td>
         <button class="btn small ghost" data-edit-doku="${d.id}">Bearbeiten</button>
         ${match ? '' : `<button class="btn small" data-create-einheit="${d.id}" title="Fehlende Therapieeinheit jetzt erfassen">+ Termin</button>`}
@@ -2163,9 +2268,15 @@ function renderUebersicht(){
       const patientCell = matchedStamm
         ? `<a href="#" data-open-stamm="${matchedStamm.id}" style="color:var(--primary);text-decoration:underline" title="Stammdaten von ${matchedStamm.k_nachname||''}, ${matchedStamm.k_vorname||''} öffnen">${e.patient||''}</a>${matchedStamm.vertragstyp?`<br><span class="legend">${matchedStamm.vertragstyp}</span>`:''}`
         : `${e.patient||''} <span class="legend" title="Keine Stammdaten gefunden">⚠ kein Stamm</span>`;
-      tr.innerHTML = `<td>${e.wochentag||''}</td><td>${e.datum||''}</td><td>${e.uhrzeit||''}</td>
-        <td>${e.therapeut||''}</td><td>${patientCell}</td><td>${e.leistung||''}</td>
-        <td>${e.dauer||''}</td><td><span class="pill ${status}">${e.status||''}</span></td>`;
+      tr.innerHTML = `
+        <td>${e.wochentag||''} ${e.datum||''}</td>
+        <td data-label="Datum">${e.datum||''}</td>
+        <td data-label="Uhrzeit">${e.uhrzeit||''}</td>
+        <td data-label="Therapeut:in">${e.therapeut||''}</td>
+        <td data-label="Patient">${patientCell}</td>
+        <td data-label="Leistung">${e.leistung||''}</td>
+        <td data-label="Dauer (Min)">${e.dauer||''}</td>
+        <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>`;
       tb.appendChild(tr);
     });
   }

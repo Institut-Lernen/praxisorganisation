@@ -225,7 +225,28 @@
     <p class="lead">Schnellerfassung in unter 30 Sekunden. Wird als Termin in der Wochenübersicht und beim Excel-Export in <em>LT-Stunden</em> einsortiert.</p>
     <form id="formEinheit" class="grid grid-4">
       <div><label>Datum</label><input type="date" name="datum" required></div>
-      <div><label>Uhrzeit (z. B. 9:30-10:15)</label><input type="text" name="uhrzeit" placeholder="9:30-10:15" required></div>
+      <div><label>Uhrzeit (z. B. 9:30-10:15)</label>
+        <input type="text" name="uhrzeit" list="uhrzeitList" placeholder="aus Auswahl oder eintippen" required>
+        <datalist id="uhrzeitList">
+          <option value="8:00-8:45">8:00 – 8:45 (1 UE)</option>
+          <option value="8:00-9:30">8:00 – 9:30 (2 UE)</option>
+          <option value="9:00-9:45">9:00 – 9:45 (1 UE)</option>
+          <option value="9:00-10:30">9:00 – 10:30 (2 UE)</option>
+          <option value="9:30-10:15">9:30 – 10:15 (1 UE)</option>
+          <option value="10:00-10:45">10:00 – 10:45 (1 UE)</option>
+          <option value="10:30-11:15">10:30 – 11:15 (1 UE)</option>
+          <option value="11:00-11:45">11:00 – 11:45 (1 UE)</option>
+          <option value="12:00-12:45">12:00 – 12:45 (1 UE)</option>
+          <option value="13:00-13:45">13:00 – 13:45 (1 UE)</option>
+          <option value="14:00-14:45">14:00 – 14:45 (1 UE)</option>
+          <option value="14:00-15:30">14:00 – 15:30 (2 UE)</option>
+          <option value="15:00-15:45">15:00 – 15:45 (1 UE)</option>
+          <option value="15:00-16:30">15:00 – 16:30 (2 UE)</option>
+          <option value="16:00-16:45">16:00 – 16:45 (1 UE)</option>
+          <option value="16:00-17:30">16:00 – 17:30 (2 UE)</option>
+          <option value="17:00-17:45">17:00 – 17:45 (1 UE)</option>
+        </datalist>
+      </div>
       <div>
         <label>Wochentag</label>
         <select name="wochentag" required>
@@ -236,7 +257,8 @@
       </div>
       <div>
         <label>Therapeut:in</label>
-        <input type="text" name="therapeut" placeholder="z. B. Hohmann, Jeannine" required>
+        <input type="text" name="therapeut" list="therapeutListErfassen" placeholder="aus Therapieplätzen wählen" required>
+        <datalist id="therapeutListErfassen"></datalist>
       </div>
       <div><label>Patient/Kürzel</label>
         <input type="text" name="patient" list="patientList" placeholder="aus Stammdaten oder Kürzel" required>
@@ -249,6 +271,8 @@
           <option>Lerntherapie LRS</option>
           <option>Lerntherapie Dyskalkulie</option>
           <option>Diagnostik</option>
+          <option>Anamnesegespräch</option>
+          <option>Auswertungsgespräch</option>
           <option>Erstgespräch</option>
           <option>Beratung Eltern</option>
           <option>Beratung Lehrkraft</option>
@@ -258,7 +282,7 @@
       <div>
         <label>Form</label>
         <select name="form">
-          <option>Einzel</option><option>Gruppe</option><option>Online</option>
+          <option>Einzel</option><option>Gruppe</option><option>Online</option><option>Eltern</option>
         </select>
       </div>
       <div>
@@ -346,6 +370,7 @@
           <option value="Miniabonnement">Miniabonnement (12 Mo / 36 Std)</option>
           <option value="Standardvertrag">Standardvertrag (frei)</option>
           <option value="Jugendamt">Jugendamt (laut Bewilligung)</option>
+          <option value="Kostenzusage">Kostenzusage (z. B. Krankenkasse / Sonderbehörde)</option>
           <option value="Privat offen">Privat offen (kein Limit)</option>
         </select>
       </div>
@@ -469,7 +494,7 @@
         <div><label>Datum</label><input name="datum" type="date" required></div>
         <div><label>Uhrzeit</label><input name="uhrzeit" type="time"></div>
         <div><label>Dauer (Min.)</label><input name="dauer" type="number" value="45"></div>
-        <div><label>Therapeut:in</label><input name="therapeut"></div>
+        <div><label>Therapeut:in</label><input name="therapeut" list="therapeutListDoku" placeholder="aus Therapieplätzen wählen"><datalist id="therapeutListDoku"></datalist></div>
       </div>
 
       <details open>
@@ -1833,7 +1858,56 @@ function refreshPatientList(){
   dl.innerHTML = visible
     .map(s => `<option value="${(s.k_nachname||'')}, ${(s.k_vorname||'')}">${s.therapeutin||''}</option>`)
     .join('');
+  refreshTherapeutLists();
 }
+
+function refreshTherapeutLists(){
+  const therOptions = (state.therapeuten||[])
+    .map(t => `<option value="${t.name}">${t.rolle||''}</option>`).join('');
+  const dl1 = document.getElementById('therapeutListErfassen');
+  if(dl1) dl1.innerHTML = therOptions;
+  const dl2 = document.getElementById('therapeutListDoku');
+  if(dl2) dl2.innerHTML = therOptions;
+}
+
+// Stundendoku: bei Klient-Auswahl Geb./Klasse aus Stammdaten automatisch eintragen
+document.addEventListener('DOMContentLoaded', () => {
+  const klientFeld = document.querySelector('#formDoku [name=klient]');
+  if(klientFeld){
+    klientFeld.addEventListener('change', () => {
+      const name = klientFeld.value.toLowerCase().trim();
+      if(!name) return;
+      const lastName = name.split(',')[0].trim();
+      const stamm = state.stammdaten.find(s => {
+        const full = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase().trim();
+        return full === name || (s.k_nachname || '').toLowerCase().trim() === lastName;
+      });
+      if(stamm){
+        const gebKlasseFeld = document.querySelector('#formDoku [name=gebKlasse]');
+        if(gebKlasseFeld && !gebKlasseFeld.value) gebKlasseFeld.value = stamm.k_gebKlasse || '';
+        const therFeld = document.querySelector('#formDoku [name=therapeut]');
+        if(therFeld && !therFeld.value) therFeld.value = stamm.therapeutin || '';
+      }
+    });
+  }
+  // Gleiches Verhalten beim Erfassen-Tab für die Therapeut:in
+  const patientFeld = document.querySelector('#formEinheit [name=patient]');
+  if(patientFeld){
+    patientFeld.addEventListener('change', () => {
+      const name = patientFeld.value.toLowerCase().trim();
+      if(!name) return;
+      const lastName = name.split(',')[0].trim();
+      const stamm = state.stammdaten.find(s => {
+        const full = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase().trim();
+        return full === name || (s.k_nachname || '').toLowerCase().trim() === lastName;
+      });
+      if(stamm){
+        const therFeld = document.querySelector('#formEinheit [name=therapeut]');
+        if(therFeld && !therFeld.value) therFeld.value = stamm.therapeutin || '';
+      }
+    });
+  }
+});
 
 /* ============================================================
    3) Erstkontakt / Warteliste
@@ -1941,6 +2015,18 @@ formW.addEventListener('submit', e=>{
   formW.reset();
   document.getElementById('wjh_calc').value = '';
 });
+
+/* Status-Kürzel für Excel-Anzeigen:
+   (E) = Abgesagt durch Eltern (wird trotzdem berechnet)
+   (R) = Ersatztermin
+   (T) = Abgesagt durch Therapeut:in (zählt NICHT, kommt nur in Detailblättern vor)
+   leer = Durchgeführt */
+function statusKuerzel(status){
+  if(status === 'Abgesagt durch Eltern') return ' (E)';
+  if(status === 'Ersatztermin') return ' (R)';
+  if(status === 'Abgesagt durch Therapeut:in') return ' (T)';
+  return '';
+}
 
 /* Hilfsfunktion: Dauer in Minuten → Anzahl Therapieeinheiten (1 UE = 45 Min) */
 function dauerInUE(minuten){
@@ -2483,7 +2569,11 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
   const header = includeTherapeutCol
     ? ['Wochentag','Name/Uhrzeit','Therapeutin', ...MONATE,'Dez 25','x']
     : ['Wochentag','Name','Uhrzeit', ...MONATE,'Dez 25','x'];
-  const rows = [header];
+  // Legende als erste Zeile (vor dem Header)
+  const rows = [
+    ['Legende: (E) = Eltern-Absage, wird abgerechnet · (R) = Ersatztermin · ohne Suffix = Durchgeführt', ...Array(MONATE.length+4).fill('')],
+    header
+  ];
   const items = state.einheiten.filter(e=>{
     if(e.wochentag !== weekday) return false;
     // Privat-Klient:innen filtern (Jugendamt gehört in die WJH-Datei)
@@ -2496,9 +2586,10 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
   items.forEach(e=>{
     const key = (e.patient||'') + '|' + (e.uhrzeit||'') + '|' + (e.therapeut||'');
     if(!slots[key]) slots[key] = {patient:e.patient, uhrzeit:e.uhrzeit, therapeut:e.therapeut, byMonth:Array(12).fill().map(()=>[])};
-    if(e.status==='Durchgeführt' && e.datum){
+    // Alle zählenden Status werden eingetragen (Durchgeführt + Eltern-Absage + Ersatz), Eltern-Absage als (E), Ersatz als (R)
+    if(STATUS_ZAEHLT.includes(e.status) && e.datum){
       const d = new Date(e.datum);
-      slots[key].byMonth[d.getMonth()].push(d);
+      slots[key].byMonth[d.getMonth()].push({ date: d, suffix: statusKuerzel(e.status) });
     }
   });
   Object.values(slots).forEach((s,idx)=>{
@@ -2512,21 +2603,21 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
       r.push(s.uhrzeit||'');
     }
     s.byMonth.forEach(arr=>{
-      arr.sort((a,b)=>a-b);
-      r.push(arr.map(d=>d.toISOString().slice(0,10)).join(' / '));
+      arr.sort((a,b)=>a.date - b.date);
+      r.push(arr.map(x => x.date.toISOString().slice(0,10) + x.suffix).join(' / '));
     });
     r.push(''); r.push('');
     rows.push(r);
   });
-  if(rows.length===1) rows.push([weekday, '', '', ...Array(MONATE.length+2).fill('')]);
-  return styleSheet(XLSX.utils.aoa_to_sheet(rows));
+  if(rows.length===2) rows.push([weekday, '', '', ...Array(MONATE.length+2).fill('')]);
+  return XLSX.utils.aoa_to_sheet(rows);
 }
 
 function exportLT(){
   // LT-Stunden Hohmann: Privat-Klient:innen, Festangestellte
   const wb = XLSX.utils.book_new();
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
-    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, false, 'festangestellt'), 'LT '+d);
+    XLSX.utils.book_append_sheet(wb, styleSheet(buildLTSheet(d, false, 'festangestellt'), {headerRows:2}), 'LT '+d);
   });
   XLSX.writeFile(wb, 'LT-Stunden_'+(state.user.name||'Hohmann')+'.xlsx');
 }
@@ -2535,7 +2626,7 @@ function exportHonorar(){
   // LT-Stunden Honorarkräfte: Privat-Klient:innen, nur Honorar-Therapeut:innen
   const wb = XLSX.utils.book_new();
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
-    XLSX.utils.book_append_sheet(wb, buildLTSheet(d, true, 'honorar'), 'LT '+d);
+    XLSX.utils.book_append_sheet(wb, styleSheet(buildLTSheet(d, true, 'honorar'), {headerRows:2}), 'LT '+d);
   });
   XLSX.writeFile(wb, 'LT-Stunden_Honorarkraefte.xlsx');
 }
@@ -2668,13 +2759,13 @@ function exportAbonnement(){
   const sheet1 = makeAbonnementSheet(klienten, jahr, 0, 6, [
     'Januar','Februar','März','April','Mai','Juni'
   ], 1);
-  XLSX.utils.book_append_sheet(wb, styleSheet(sheet1, {headerRows:1}), '1-6_Abonnement LT');
+  XLSX.utils.book_append_sheet(wb, styleSheet(sheet1, {headerRows:2}), '1-6_Abonnement LT');
 
   // Sheet 2: Juli–Dezember
   const sheet2 = makeAbonnementSheet(klienten, jahr, 6, 6, [
     'Juli','August','September','Oktober','November','Dezember'
   ], 7);
-  XLSX.utils.book_append_sheet(wb, styleSheet(sheet2, {headerRows:1}), '7-12_Abonnement LT');
+  XLSX.utils.book_append_sheet(wb, styleSheet(sheet2, {headerRows:2}), '7-12_Abonnement LT');
 
   // Sheet 3: Einzelpositionen pro Vertrag (alle Therapieeinheiten als Detailauflistung)
   const sheet3 = makeAbonnementDetailSheet(klienten, jahr);
@@ -2741,7 +2832,11 @@ function makeAbonnementSheet(klienten, jahr, startMonat, anzMonate, monatsNamen,
     header.push('Summe ' + (monatNumStart + i));
     header.push('bez');
   }
-  const rows = [header];
+  // Legende vor dem Header
+  const rows = [
+    ['Legende: (E) = Eltern-Absage, wird abgerechnet · (R) = Ersatztermin · ohne Suffix = Durchgeführt', ...Array(header.length-1).fill('')],
+    header
+  ];
 
   // Pro Buchstabe gruppieren
   const grouped = {};
@@ -2770,7 +2865,10 @@ function makeAbonnementSheet(klienten, jahr, startMonat, anzMonate, monatsNamen,
           const monat = startMonat + i;
           // Termine-Daten dieses Monats sammeln
           const termine = einheitenForKlientInMonth(s, jahr, monat);
-          const datums = termine.map(e => e.datum).sort().join(' / ');
+          const datums = termine
+            .sort((a,b)=>(a.datum||'').localeCompare(b.datum||''))
+            .map(e => (e.datum||'') + statusKuerzel(e.status))
+            .join(' / ');
           const ue = termine.reduce((sum,e) => sum + dauerInUE(e.dauer || 45), 0);
           lauf += ue;
           // Bezahlt-Status
@@ -2859,12 +2957,19 @@ function exportAbrPrivat(){
   const wb = XLSX.utils.book_new();
   const rows = [['Klient:in (Nachname)','Klient:in (Vorname)','Therapeut:in',
                  'Rechnungsempfänger','Adresse','E-Mail',
-                 'Vertragstyp','Leistungszeitraum','Stunden','Stundensatz','Monatspauschale','Abrechnungsmodus','Gesamtbetrag',
+                 'Vertragstyp','Leistungszeitraum',
+                 'Stunden gesamt','davon durchgeführt','davon Eltern-Absage','davon Ersatztermin',
+                 'Stundensatz','Monatspauschale','Abrechnungsmodus','Gesamtbetrag',
                  'Bezahlt','Buchungstext','Kontingent','Verbraucht','Verbleibend']];
   state.stammdaten.filter(canSeeStamm).filter(isPrivatKlient).forEach(s=>{
     const ein = einheitenInMonat(s, ym);
     if(!ein.length) return;
-    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
+    // Aufschlüsselung nach Status für Transparenz
+    const stdGesamt = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
+    const stdDurch = Math.round(ein.filter(e => e.status==='Durchgeführt').reduce((s,e)=>s+dauerInUE(e.dauer||45),0)*10)/10;
+    const stdElternAbs = Math.round(ein.filter(e => e.status==='Abgesagt durch Eltern').reduce((s,e)=>s+dauerInUE(e.dauer||45),0)*10)/10;
+    const stdErsatz = Math.round(ein.filter(e => e.status==='Ersatztermin').reduce((s,e)=>s+dauerInUE(e.dauer||45),0)*10)/10;
+    const std = stdGesamt;
     const satz = parseFloat(s.stundensatz)||0;
     const betrag = std*satz;
     const k = kumulationFor(s);
@@ -2878,7 +2983,9 @@ function exportAbrPrivat(){
     rows.push([
       s.k_nachname||'', s.k_vorname||'', s.therapeutin||'',
       empf, adr, mail,
-      s.vertragstyp||'', ym, std, satz, pauschale||'', isAbo?'Pauschale (Abo)':'Stunden×Satz', betragFinal,
+      s.vertragstyp||'', ym,
+      stdGesamt, stdDurch, stdElternAbs, stdErsatz,
+      satz, pauschale||'', isAbo?'Pauschale (Abo)':'Stunden×Satz', betragFinal,
       bezahlt,
       `Lerntherapie ${s.k_nachname||''} ${s.k_vorname||''} ${ym}`,
       k.kontingent||'', k.verbraucht||0,

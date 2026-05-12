@@ -187,6 +187,40 @@
   .legend{font-size:11px;color:var(--muted)}
   .danger-zone{border:1px dashed var(--bad);background:#fffafa;padding:12px;border-radius:8px}
   .info{background:#fef9e7;border-left:3px solid var(--warn);padding:10px 14px;font-size:13px;border-radius:0 6px 6px 0;margin-bottom:14px}
+
+  /* Modal für Doku-Detailansicht */
+  .modal-overlay{position:fixed;inset:0;background:rgba(38,24,26,.6);z-index:100;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+  .modal-overlay.show{display:flex}
+  .modal{background:#fff;border-radius:10px;width:100%;max-width:900px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden}
+  .modal-head{padding:18px 24px;border-bottom:2px solid var(--primary);display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,#fff,var(--primary-soft))}
+  .modal-head h2{margin:0;color:var(--primary);font-size:20px;flex:1}
+  .modal-body{padding:20px 24px;max-height:75vh;overflow-y:auto}
+  .modal-foot{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:#fafafa}
+  .doku-section{margin-bottom:16px}
+  .doku-section h3{font-size:14px;color:var(--primary);margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px}
+  .doku-row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:4px 0;font-size:13px}
+  .doku-row .lbl{color:var(--muted);font-weight:500}
+  .doku-row .val{color:var(--ink)}
+  .doku-row .val.empty{color:#bbb;font-style:italic}
+  .doku-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;font-size:12px}
+  .doku-grid .item{padding:4px 8px;background:var(--primary-soft);border-radius:4px}
+  .obs-print-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+  .obs-print-table th,.obs-print-table td{padding:5px 8px;border:1px solid var(--border);text-align:left}
+  .obs-print-table th{background:var(--primary-soft);color:var(--primary);font-weight:600}
+  .obs-print-table tr.has-fb td{background:#fffbeb}
+  .obs-print-table tr.has-dfb td{background:#fbe5e8}
+
+  /* Druck-spezifisches Styling */
+  @media print{
+    body * { visibility:hidden }
+    #dokuModal, #dokuModal * { visibility:visible }
+    #dokuModal{position:absolute;left:0;top:0;width:100%;background:white;padding:0}
+    .modal-overlay{background:white;padding:0;display:block}
+    .modal{box-shadow:none;max-width:100%}
+    .modal-foot{display:none}
+    .modal-head{background:white;border-bottom:2px solid var(--primary)}
+    .doku-section{page-break-inside:avoid}
+  }
 </style>
 </head>
 <body>
@@ -305,9 +339,10 @@
       </div>
       <div style="grid-column:span 2"><label>Notiz (optional, intern)</label><textarea name="notiz" rows="2"></textarea></div>
       <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
-        <button type="reset" class="btn ghost">Zurücksetzen</button>
+        <button type="reset" class="btn ghost" id="einheitCancelEdit">Zurücksetzen / Neu</button>
         <button type="submit" class="btn">Einheit speichern</button>
       </div>
+      <input type="hidden" name="id">
     </form>
   </div>
 
@@ -603,7 +638,18 @@
   </div>
 
   <div class="card">
-    <h2>Gespeicherte Dokumentationen</h2>
+    <div class="row">
+      <h2 style="margin:0">Gespeicherte Dokumentationen</h2>
+      <div class="right" style="display:flex;gap:8px;align-items:center">
+        <label style="margin:0">Sortieren:</label>
+        <select id="dokuSort" style="width:auto">
+          <option value="datum_desc">Datum (neueste zuerst)</option>
+          <option value="datum_asc">Datum (älteste zuerst)</option>
+          <option value="klient_asc">Klient:in A–Z</option>
+          <option value="klient_desc">Klient:in Z–A</option>
+        </select>
+      </div>
+    </div>
     <table id="dokuTable" class="responsive">
       <thead><tr><th>Datum</th><th>Klient:in</th><th>Schwerpunkt</th><th>Sitzung</th><th>Therapeut:in</th><th>Termin</th><th></th></tr></thead>
       <tbody></tbody>
@@ -907,6 +953,24 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Doku-Detail-Modal -->
+<div class="modal-overlay" id="dokuModal" onclick="if(event.target.id==='dokuModal') closeDokuModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="dokuModalTitle">Stundendokumentation</h2>
+      <button class="btn small ghost" onclick="closeDokuModal()" title="Schließen">✕</button>
+    </div>
+    <div class="modal-body" id="dokuModalBody">
+      <!-- wird dynamisch befüllt -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="window.print()">🖨 Drucken / als PDF</button>
+      <button class="btn ghost" id="dokuModalEdit">✎ Bearbeiten</button>
+      <button class="btn" onclick="closeDokuModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    Praxisorganisation – Prototyp
@@ -1059,12 +1123,22 @@ formE.querySelector('[name=datum]').addEventListener('change', e=>{
 formE.addEventListener('submit', e=>{
   e.preventDefault();
   const o = dataFromForm(formE);
-  o.id = uid();
   o.therapeut = o.therapeut || state.user.name;
-  state.einheiten.unshift(o);
+  if(o.id){
+    state.einheiten = state.einheiten.map(x => x.id===o.id ? Object.assign({}, x, o) : x);
+    toast('Einheit aktualisiert');
+  } else {
+    o.id = uid();
+    state.einheiten.unshift(o);
+    toast('Einheit gespeichert');
+  }
   save(); renderEinheiten();
   formE.reset();
-  toast('Einheit gespeichert');
+  formE.querySelector('[name=id]').value = '';
+});
+
+document.getElementById('einheitCancelEdit').addEventListener('click', ()=>{
+  formE.querySelector('[name=id]').value = '';
 });
 
 function renderEinheiten(){
@@ -1096,16 +1170,31 @@ function renderEinheiten(){
         <td data-label="Leistung">${e.leistung||''}</td>
         <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>
         <td data-label="Doku">${dokuPill}</td>
-        <td><button class="btn small ghost" data-del="${e.id}">Löschen</button></td>`;
+        <td>
+          <button class="btn small ghost" data-edit-einheit="${e.id}">Bearbeiten</button>
+          <button class="btn small ghost" data-del="${e.id}">Löschen</button>
+        </td>`;
       tb.appendChild(tr);
     });
   }
   document.getElementById('einheitenCount').textContent = `${visible.length} sichtbar / ${state.einheiten.length} gesamt`;
 }
 document.querySelector('#einheitenTable').addEventListener('click', e=>{
-  const id = e.target.dataset.del; if(!id) return;
+  const editId = e.target.dataset.editEinheit;
+  if(editId){
+    const ein = state.einheiten.find(x => x.id === editId); if(!ein) return;
+    formE.reset();
+    Object.entries(ein).forEach(([k,v])=>{
+      const el = formE.querySelector(`[name="${k}"]`); if(el) el.value = v == null ? '' : v;
+    });
+    formE.querySelector('[name=id]').value = ein.id;
+    formE.scrollIntoView({behavior:'smooth', block:'start'});
+    toast('Einheit geladen – nach Änderungen speichern');
+    return;
+  }
+  const delId = e.target.dataset.del; if(!delId) return;
   if(confirm('Einheit wirklich löschen?')){
-    state.einheiten = state.einheiten.filter(x=>x.id!==id);
+    state.einheiten = state.einheiten.filter(x=>x.id!==delId);
     save(); renderEinheiten();
   }
 });
@@ -1250,7 +1339,20 @@ function renderDokus(){
   if(!state.dokus.length){
     tb.innerHTML = '<tr><td colspan="7" class="empty">Noch keine Dokumentation erfasst.</td></tr>'; return;
   }
-  state.dokus.forEach(d=>{
+  // Sortierung anwenden
+  const sortKey = (document.getElementById('dokuSort') && document.getElementById('dokuSort').value) || 'datum_desc';
+  const sorted = state.dokus.slice().sort((a,b)=>{
+    const dA = a.datum || '', dB = b.datum || '';
+    const kA = (a.klient||'').toLowerCase(), kB = (b.klient||'').toLowerCase();
+    switch(sortKey){
+      case 'datum_asc':  return dA.localeCompare(dB);
+      case 'datum_desc': return dB.localeCompare(dA);
+      case 'klient_asc': return kA.localeCompare(kB) || dB.localeCompare(dA);
+      case 'klient_desc':return kB.localeCompare(kA) || dB.localeCompare(dA);
+    }
+    return 0;
+  });
+  sorted.forEach(d=>{
     const match = findMatchingEinheit(d);
     let linkBox;
     if(match){
@@ -1270,8 +1372,9 @@ function renderDokus(){
       <td data-label="Therapeut:in">${d.therapeut||''}</td>
       <td data-label="Termin-Match">${linkBox}</td>
       <td>
+        <button class="btn small" data-view-doku="${d.id}">Ansehen</button>
         <button class="btn small ghost" data-edit-doku="${d.id}">Bearbeiten</button>
-        ${match ? '' : `<button class="btn small" data-create-einheit="${d.id}" title="Fehlende Therapieeinheit jetzt erfassen">+ Termin</button>`}
+        ${match ? '' : `<button class="btn small ghost" data-create-einheit="${d.id}" title="Fehlende Therapieeinheit jetzt erfassen">+ Termin</button>`}
         <button class="btn small ghost" data-del-doku="${d.id}">Löschen</button>
       </td>`;
     tb.appendChild(tr);
@@ -1328,7 +1431,132 @@ function findMatchingEinheit(doku){
   });
 }
 
+document.getElementById('dokuSort').addEventListener('change', renderDokus);
+
+/* Doku-Detail-Modal öffnen/schließen */
+function openDokuModal(id){
+  const d = state.dokus.find(x => x.id === id); if(!d) return;
+  document.getElementById('dokuModalTitle').textContent =
+    `Stundendokumentation – ${d.klient||''} ${d.datum?(', '+d.datum):''}`;
+  document.getElementById('dokuModalBody').innerHTML = renderDokuDetail(d);
+  document.getElementById('dokuModalEdit').onclick = function(){
+    closeDokuModal();
+    // simuliere Klick auf Bearbeiten
+    const fakeEvent = { target: { dataset: { editDoku: id } } };
+    document.querySelector('#dokuTable').dispatchEvent(new Event('click'));
+    setTimeout(() => {
+      const btn = document.querySelector('[data-edit-doku="'+id+'"]');
+      if(btn) btn.click();
+    }, 50);
+  };
+  document.getElementById('dokuModal').classList.add('show');
+}
+function closeDokuModal(){
+  document.getElementById('dokuModal').classList.remove('show');
+}
+
+/* Detail-HTML einer Dokumentation rendern (für Modal-Anzeige) */
+function renderDokuDetail(d){
+  const row = (label, value) => {
+    const isEmpty = value === undefined || value === null || value === '' || value === false;
+    return `<div class="doku-row"><div class="lbl">${label}</div><div class="val${isEmpty?' empty':''}">${isEmpty?'—':value}</div></div>`;
+  };
+  const checked = (val, txt) => val ? `<div class="item">✓ ${txt}</div>` : '';
+
+  // Schwerpunkt-Items mit zugehörigem Beobachtungs-Array
+  const obsLRSarr = ['Lesen: Tempo / Flüssigkeit','Lesen: Lautlesegenauigkeit','Lesen: Sinnentnahme / Verständnis','Rechtschreibung: Fehlerschwerpunkte','Rechtschreibung: Strategieanwendung','Phonem-Graphem-Zuordnung','Schreibflüssigkeit / Handschrift','Selbstwert / Lernfreude (LRS)'];
+  const obsDYSarr = ['Pränumerik (Seriation, Klassifikation, Invarianz)','Zählen / Mengenvorstellung','Zahlbeziehungen (Teil-Teil-Ganzes, Zerlegung)','Stellenwertsystem / Bündelungen','Operationsverständnis (+ − × ÷)','Rechenstrategien (nicht-zählend)','Automatisierung / Faktenwissen','Textaufgaben / Anwendung','Größen (Geld, Zeit, Maße)','Geometrie / Raum-Lage','Selbstvertrauen / Vermeidungsverhalten'];
+  const obsCommonItems = {
+    'sensomotorik': ['Grobmotorik (Koordination, Gleichgewicht)','Feinmotorik (Stifthaltung, Schreibdruck)','Visuomotorik / Auge-Hand-Koordination','Körperhaltung / Tonus','Lateralität / Händigkeit','Sensorische Verarbeitung','Augenfolgebewegungen'],
+    'sprache': ['Wortschatz (rezeptiv & expressiv)','Grammatik / Satzbau','Aussprache / Artikulation','Sprachverständnis','Erzähl- / Berichtfähigkeit','Phonologische Bewusstheit','Mehrsprachigkeit / Sprachhintergrund'],
+    'psycheverhaltenhaltung': ['Selbstwert / Selbstbild','Frustrationstoleranz','Motivation / Lernfreude','Aufmerksamkeit / Konzentration','Emotionale Belastung / Sorgen','Vermeidungsverhalten','Komorbidität (ADHS, Angst, Verhalten)']
+  };
+  const labelMap = { unauf:'unauffällig', fb:'Förderbedarf', dfb:'deutl. Förderbedarf', nb:'n.b.' };
+
+  function renderObsTable(items, prefix){
+    let h = `<table class="obs-print-table"><thead><tr><th>Bereich</th><th>Bewertung</th><th>Bemerkung</th></tr></thead><tbody>`;
+    items.forEach((label,i)=>{
+      const val = d[`${prefix}_${i}`];
+      const bem = d[`${prefix}_${i}_b`];
+      if(!val && !bem) return;
+      const cls = val==='fb' ? 'has-fb' : val==='dfb' ? 'has-dfb' : '';
+      h += `<tr class="${cls}"><td>${label}</td><td>${labelMap[val]||'—'}</td><td>${bem||''}</td></tr>`;
+    });
+    h += `</tbody></table>`;
+    return h;
+  }
+
+  let obsFach = '';
+  if(d.schwerpunkt === 'LRS'){
+    obsFach = renderObsTable(obsLRSarr, 'lrs');
+  } else if(d.schwerpunkt === 'DYS'){
+    obsFach = renderObsTable(obsDYSarr, 'dys');
+  }
+  const obsCommonHtml = Object.entries(obsCommonItems).map(([key, items]) => {
+    const tbl = renderObsTable(items, key);
+    return tbl.includes('<tbody></tbody>') ? '' : `<h3 style="text-transform:none;color:var(--ink);font-size:13px;border:0">${key==='sensomotorik'?'Sensomotorik':key==='sprache'?'Sprache':'Psyche · Verhalten · Haltung'}</h3>${tbl}`;
+  }).join('');
+
+  return `
+    <div class="doku-section">
+      <h3>Stammdaten</h3>
+      ${row('Klient:in', d.klient)}
+      ${row('Geb. / Klasse', d.gebKlasse)}
+      ${row('Sitzung Nr.', d.sitzungNr)}
+      ${row('Datum / Uhrzeit', `${d.datum||''} ${d.uhrzeit?'· '+d.uhrzeit:''}`)}
+      ${row('Dauer', d.dauer ? d.dauer + ' Min' : '')}
+      ${row('Therapeut:in', d.therapeut)}
+      ${row('Förderschwerpunkt', d.schwerpunkt==='LRS' ? 'Legasthenie / LRS' : (d.schwerpunkt==='DYS' ? 'Dyskalkulie' : d.schwerpunkt))}
+    </div>
+
+    <div class="doku-section">
+      <h3>Tagesform & Schwerpunkte</h3>
+      ${row('Tagesform', d.tagesform)}
+      ${row('Stundenziel', d.stundenziel)}
+      <div class="doku-grid" style="margin-top:6px">
+        ${checked(d.sp_senso,'Sensomotorik')}
+        ${checked(d.sp_sprache,'Sprache')}
+        ${checked(d.sp_psyche,'Psyche / Verhalten')}
+        ${checked(d.sp_fach,'Fachlich (Schrift/Rechnen)')}
+        ${checked(d.sp_eltern,'Beratung Eltern')}
+        ${checked(d.sp_lehrer,'Beratung Lehrkraft')}
+      </div>
+    </div>
+
+    <div class="doku-section">
+      <h3>Materialien & Hausaufgabe</h3>
+      <div class="doku-grid">
+        ${checked(d.mat_anschauung,'Anschauungs-/Manipulationsmaterial')}
+        ${checked(d.mat_karten,'Karten / Bildmaterial')}
+        ${checked(d.mat_schreib,'Schreib- / Lesematerial')}
+        ${checked(d.mat_spiel,'Spiel / spielerische Übung')}
+        ${checked(d.mat_bewegung,'Bewegung / Sensomotorik')}
+        ${checked(d.mat_digital,'Digitale Medien')}
+      </div>
+      ${row('Sonstiges Material', d.mat_sonstiges)}
+      ${row('Hausaufgabe Vorstunde', d.ha)}
+      ${row('Notiz zur HA', d.ha_notiz)}
+    </div>
+
+    ${obsFach ? `<div class="doku-section"><h3>Beobachtungen Förderschwerpunkt (${d.schwerpunkt})</h3>${obsFach}</div>` : ''}
+    ${obsCommonHtml ? `<div class="doku-section"><h3>Beobachtungen Allgemein</h3>${obsCommonHtml}</div>` : ''}
+
+    <div class="doku-section">
+      <h3>Beratung & Vereinbarungen</h3>
+      ${row('Beratung Eltern', d.b_eltern)}
+      ${row('Beratung Lehrkraft / Schule', d.b_lehrer)}
+      ${row('Themen / Vereinbarungen', d.vereinbarungen)}
+    </div>
+
+    <p style="margin-top:24px;color:var(--muted);font-size:11px;text-align:right">
+      Institut Lernen · Erstellt: ${new Date().toLocaleString('de-DE')}
+    </p>
+  `;
+}
+
 document.querySelector('#dokuTable').addEventListener('click', e=>{
+  const viewId = e.target.dataset.viewDoku;
+  if(viewId){ openDokuModal(viewId); return; }
   const editId = e.target.dataset.editDoku;
   const delId = e.target.dataset.delDoku;
   if(editId){

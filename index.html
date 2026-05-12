@@ -941,10 +941,33 @@ document.getElementById('tabs').addEventListener('click', e=>{
 });
 
 /* ---- User ---- */
-document.getElementById('role').addEventListener('change', e=>{state.user.role=e.target.value;save();renderAll();});
+document.getElementById('role').addEventListener('change', e=>{state.user.role=e.target.value;save();applyRoleTabVisibility();renderAll();});
 document.getElementById('userName').addEventListener('input', e=>{state.user.name=e.target.value;save();renderAll();});
 document.getElementById('role').value = state.user.role;
 document.getElementById('userName').value = state.user.name;
+
+/* ---- Tab-Sichtbarkeit nach Rolle ----
+   Honorarkräfte sehen nur die zwei Arbeitstabs.
+   Festangestellte (therapeut) und Leitung sehen alles. */
+const TAB_ACCESS = {
+  leitung:   ['erfassen','doku','stammdaten','warteliste','wjh','abrechnung','uebersicht','export'],
+  therapeut: ['erfassen','doku'],   // wie Honorarkraft – nur arbeitsrelevante Tabs
+  honorar:   ['erfassen','doku']
+};
+
+function applyRoleTabVisibility(){
+  const allowed = TAB_ACCESS[state.user.role] || TAB_ACCESS.leitung;
+  document.querySelectorAll('#tabs button[data-tab]').forEach(btn => {
+    btn.style.display = allowed.includes(btn.dataset.tab) ? '' : 'none';
+  });
+  // Wenn aktueller Tab nicht erlaubt: zum ersten erlaubten wechseln
+  const activeBtn = document.querySelector('#tabs button.active');
+  if(activeBtn && !allowed.includes(activeBtn.dataset.tab)){
+    const first = allowed[0];
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === first));
+    document.querySelectorAll('section[data-panel]').forEach(p => p.hidden = p.dataset.panel !== first);
+  }
+}
 
 /* ---- Rollen / Rechte ----
    Modell: gestaffelt nach Rolle.
@@ -2999,6 +3022,7 @@ function renderAll(){
   renderStammdaten(); refreshPatientList();
   document.getElementById('role').value = state.user.role;
   document.getElementById('userName').value = state.user.name;
+  applyRoleTabVisibility();
 }
 
 rebuildObs();

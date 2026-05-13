@@ -716,56 +716,77 @@
     <h2>Erstkontakt anlegen</h2>
     <p class="lead">26 Felder gemäß Vorlage <em>Warteliste_blanko.xlsx → Erstkontakt</em>. Nach Platzvergabe können Datensätze in die Warteliste verschoben oder gelöscht werden.</p>
     <form id="formErstkontakt" class="grid grid-3">
-      <div><label>NR (auto)</label><input name="nr" readonly placeholder="wird vergeben"></div>
-      <div><label>Datum</label><input name="datum" type="date" required></div>
-      <div>
-        <label>Bezahlung</label>
-        <select name="bezahlung">
-          <option>Privat</option><option>Jugendamt</option><option>Mischfinanzierung</option>
-        </select>
-      </div>
-      <div><label>Eingetragen von Therapeut:in</label><input name="von_therapeut"></div>
-      <div>
-        <label>Kontakt per</label>
-        <select name="kontakt_per">
-          <option>E-Mail</option><option>Telefon</option><option>Sonstiges</option>
-        </select>
-      </div>
-      <div><label>Sonstiges</label><input name="kontakt_sonstiges"></div>
+      <details class="stamm-section" open style="grid-column:1/-1">
+        <summary>📋 Erstkontakt-Basisdaten</summary>
+        <div class="grid grid-3">
+          <div><label>NR (auto)</label><input name="nr" readonly placeholder="wird vergeben"></div>
+          <div><label>Datum</label><input name="datum" type="date" required></div>
+          <div>
+            <label>Bezahlung</label>
+            <select name="bezahlung">
+              <option>Privat</option><option>Jugendamt</option><option>Mischfinanzierung</option>
+            </select>
+          </div>
+          <div><label>Eingetragen von Therapeut:in</label><input name="von_therapeut"></div>
+          <div>
+            <label>Kontakt per</label>
+            <select name="kontakt_per">
+              <option>E-Mail</option><option>Telefon</option><option>Sonstiges</option>
+            </select>
+          </div>
+          <div><label>Sonstiges</label><input name="kontakt_sonstiges"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Kind</strong></div>
-      <div><label>Vorname</label><input name="k_vorname"></div>
-      <div><label>Nachname</label><input name="k_nachname"></div>
-      <div><label>Alter</label><input name="k_alter" type="number" min="3" max="25"></div>
-      <div><label>Schule</label><input name="schule"></div>
-      <div><label>Klasse</label><input name="klasse"></div>
+      <details class="stamm-section" open style="grid-column:1/-1">
+        <summary>👶 Kind</summary>
+        <div class="grid grid-3">
+          <div><label>Vorname</label><input name="k_vorname"></div>
+          <div><label>Nachname</label><input name="k_nachname"></div>
+          <div><label>Alter</label><input name="k_alter" type="number" min="3" max="25"></div>
+          <div><label>Schule</label><input name="schule"></div>
+          <div><label>Klasse</label><input name="klasse"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Vater</strong></div>
-      <div><label>Name</label><input name="v_name"></div>
-      <div><label>Adresse</label><input name="v_adresse"></div>
-      <div><label>E-Mail</label><input name="v_email" type="email"></div>
-      <div><label>Telefon</label><input name="v_telefon"></div>
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>👨 Vater</summary>
+        <div class="grid grid-2">
+          <div><label>Name</label><input name="v_name"></div>
+          <div><label>Adresse</label><input name="v_adresse"></div>
+          <div><label>E-Mail</label><input name="v_email" type="email"></div>
+          <div><label>Telefon</label><input name="v_telefon"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Mutter</strong></div>
-      <div><label>Name</label><input name="m_name"></div>
-      <div><label>Adresse</label><input name="m_adresse"></div>
-      <div><label>E-Mail</label><input name="m_email" type="email"></div>
-      <div><label>Telefon</label><input name="m_telefon"></div>
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>👩 Mutter</summary>
+        <div class="grid grid-2">
+          <div><label>Name</label><input name="m_name"></div>
+          <div><label>Adresse</label><input name="m_adresse"></div>
+          <div><label>E-Mail</label><input name="m_email" type="email"></div>
+          <div><label>Telefon</label><input name="m_telefon"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr></div>
-      <div>
-        <label>DSGVO-E-Mail erhalten</label>
-        <select name="dsgvo"><option>nein</option><option>ja</option></select>
-      </div>
-      <div style="grid-column:span 2"><label>Anliegen</label><input name="anliegen"></div>
-      <div>
-        <label>Auf Warteliste</label>
-        <select name="warteliste"><option>nein</option><option>ja</option></select>
-      </div>
-      <div><label>Termin Erstgespräch / Diagnostik</label><input name="termin_eg" type="date"></div>
-      <div><label>Therapeut:in (zugewiesen)</label><input name="zug_therapeut"></div>
+      <details class="stamm-section" open style="grid-column:1/-1">
+        <summary>🎯 Anliegen &amp; Zuordnung</summary>
+        <div class="grid grid-3">
+          <div>
+            <label>DSGVO-E-Mail erhalten</label>
+            <select name="dsgvo"><option>nein</option><option>ja</option></select>
+          </div>
+          <div style="grid-column:span 2"><label>Anliegen</label><input name="anliegen"></div>
+          <div>
+            <label>Auf Warteliste</label>
+            <select name="warteliste"><option>nein</option><option>ja</option></select>
+          </div>
+          <div><label>Termin Erstgespräch / Diagnostik</label><input name="termin_eg" type="date"></div>
+          <div><label>Therapeut:in (zugewiesen)</label><input name="zug_therapeut"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
+      <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <button type="reset" class="btn ghost">Zurücksetzen</button>
         <button type="submit" class="btn">Erstkontakt speichern</button>
       </div>

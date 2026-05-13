@@ -172,7 +172,15 @@
   .obs-table td{padding:5px 6px}
   .obs-table input[type=radio]{width:auto;margin:0}
   .stack{display:flex;flex-direction:column;gap:12px}
-  details summary{cursor:pointer;padding:8px 0;font-weight:600}
+  details summary{cursor:pointer;padding:10px 12px;font-weight:600;background:var(--primary-soft);border-radius:8px;color:var(--primary);user-select:none;list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:'▸';display:inline-block;margin-right:8px;transition:transform .2s}
+  details[open] summary::before{transform:rotate(90deg)}
+  details.stamm-section{margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px;background:#fff}
+  details.stamm-section > div.grid,details.stamm-section > div.check-grid{padding:10px 4px}
+  @media(max-width:760px){
+    details.stamm-section summary{padding:14px;font-size:14px}
+  }
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .badge-row{display:flex;gap:6px;flex-wrap:wrap}
   .check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:13px}
@@ -364,7 +372,7 @@
 <section data-panel="stammdaten" hidden>
   <div id="stammRoleNotice" class="info" style="margin-bottom:0"></div>
 
-  <div class="card">
+  <div class="card" id="plaetzeOverviewCard">
     <div class="row">
       <h2 style="margin:0">Therapieplätze</h2>
       <span class="right legend">Wird automatisch aus den Stammdaten berechnet · Konfiguration weiter unten</span>
@@ -381,27 +389,41 @@
       <div><label>Aktenzeichen</label><input name="az" placeholder="z. B. JA-2026-0042"></div>
       <div><label>Therapeut:in <span class="pill bad">Pflicht</span></label><input name="therapeutin" required></div>
 
-      <div style="grid-column:1/-1"><hr><strong>Kind</strong></div>
-      <div><label>Nachname Kind <span class="pill bad">Pflicht</span></label><input name="k_nachname" required></div>
-      <div><label>Vorname Kind <span class="pill bad">Pflicht</span></label><input name="k_vorname" required></div>
-      <div><label>Geb.-Datum / Klasse</label><input name="k_gebKlasse" placeholder="z. B. 2015 / 4a"></div>
+      <details class="stamm-section" open style="grid-column:1/-1">
+        <summary>👶 Kind <span class="pill bad" style="margin-left:8px">Pflicht</span></summary>
+        <div class="grid grid-3">
+          <div><label>Nachname Kind</label><input name="k_nachname" required></div>
+          <div><label>Vorname Kind</label><input name="k_vorname" required></div>
+          <div><label>Geb.-Datum / Klasse</label><input name="k_gebKlasse" placeholder="z. B. 2015 / 4a"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Vater</strong></div>
-      <div><label>Name</label><input name="v_name"></div>
-      <div><label>Adresse</label><input name="v_adresse"></div>
-      <div><label>E-Mail</label><input name="v_email" type="email"></div>
-      <div><label>Telefon</label><input name="v_telefon"></div>
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>👨 Vater</summary>
+        <div class="grid grid-2">
+          <div><label>Name</label><input name="v_name"></div>
+          <div><label>Adresse</label><input name="v_adresse"></div>
+          <div><label>E-Mail</label><input name="v_email" type="email"></div>
+          <div><label>Telefon</label><input name="v_telefon"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Mutter</strong></div>
-      <div><label>Name</label><input name="m_name"></div>
-      <div><label>Adresse</label><input name="m_adresse"></div>
-      <div><label>E-Mail</label><input name="m_email" type="email"></div>
-      <div><label>Telefon</label><input name="m_telefon"></div>
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>👩 Mutter</summary>
+        <div class="grid grid-2">
+          <div><label>Name</label><input name="m_name"></div>
+          <div><label>Adresse</label><input name="m_adresse"></div>
+          <div><label>E-Mail</label><input name="m_email" type="email"></div>
+          <div><label>Telefon</label><input name="m_telefon"></div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Vertrag</strong></div>
-      <div>
-        <label>Vertragstyp</label>
-        <select name="vertragstyp" id="vertragstyp">
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>📄 Vertrag &amp; Pauschalen</summary>
+        <div class="grid grid-3">
+          <div>
+            <label>Vertragstyp</label>
+            <select name="vertragstyp" id="vertragstyp">
           <option value="Miniabonnement">Miniabonnement (12 Mo / 36 Std)</option>
           <option value="Standardvertrag">Standardvertrag (frei)</option>
           <option value="Jugendamt">Jugendamt (laut Bewilligung)</option>
@@ -414,11 +436,15 @@
       <div><label>Kontingent (Std.)</label><input name="kontingent" type="number" min="0" max="500" id="kontingent" placeholder="36"></div>
       <div><label>Stundensatz (€)</label><input name="stundensatz" type="number" min="0" max="500" step="0.01" placeholder="z. B. 65,00"></div>
       <div><label>Monatspauschale (€) <span class="pill">Abo</span></label><input name="monatspauschale" type="number" min="0" max="2000" step="0.01" id="monatspauschale" placeholder="z. B. 305,00"></div>
-      <div style="grid-column:1/-1" class="legend" id="vertragsHinweis">
-        Vertragsende und verbleibendes Kontingent werden automatisch berechnet und in der Übersicht angezeigt.
-      </div>
+        <div style="grid-column:1/-1" class="legend" id="vertragsHinweis">
+          Vertragsende und verbleibendes Kontingent werden automatisch berechnet und in der Übersicht angezeigt.
+        </div>
+        </div>
+      </details>
 
-      <div style="grid-column:1/-1"><hr><strong>Rechtliche &amp; organisatorische Pflichtdokumente</strong></div>
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>✅ Rechtliche &amp; organisatorische Pflichtdokumente <span class="pill bad" style="margin-left:8px">Pflicht</span></summary>
+        <div class="grid grid-3">
       <div>
         <label>DSGVO – E-Mail erhalten <span class="pill bad">Pflicht</span></label>
         <select name="dsgvo" required>
@@ -451,7 +477,12 @@
         <input name="kostenzusage" placeholder="z. B. Privat / JA bis 31.12.2026, 40 Std">
       </div>
 
-      <div style="grid-column:1/-1"><hr><strong>Dokumente (PDF, JPG)</strong> <span class="legend">– z. B. Vertrag, DSGVO-Erklärung, Bericht</span></div>
+        </div>
+      </details>
+
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>📎 Dokumente (PDF, JPG)</summary>
+        <div class="grid grid-3" style="padding:10px 4px"><div style="grid-column:1/-1"><span class="legend">z. B. Vertrag, DSGVO-Erklärung, Bericht</span></div>
       <div style="grid-column:1/-1" id="dokumenteBereich"></div>
       <div style="grid-column:span 2">
         <label>Neue Datei hochladen</label>
@@ -470,8 +501,10 @@
       <div style="grid-column:1/-1" class="legend">
         Hinweis: Dateien werden direkt im Stammdatensatz gespeichert. Empfehlung: max. 2 MB pro Datei.
       </div>
+      </div>
+      </details>
 
-      <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
+      <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <button type="button" class="btn ghost" id="btnFromErst">Aus Erstkontakt übernehmen …</button>
         <button type="reset" class="btn ghost">Zurücksetzen</button>
         <button type="submit" class="btn">Stammdatensatz speichern</button>
@@ -480,7 +513,7 @@
     </form>
   </div>
 
-  <div class="card">
+  <div class="card" id="plaetzeConfigCard">
     <div class="row">
       <h2 style="margin:0">Therapieplätze konfigurieren</h2>
       <span class="right legend">Maximale Anzahl Klient:innen pro Therapeut:in</span>
@@ -1069,6 +1102,12 @@ function applyRoleTabVisibility(){
   document.querySelectorAll('#tabs button[data-tab]').forEach(btn => {
     btn.style.display = allowed.includes(btn.dataset.tab) ? '' : 'none';
   });
+  // Therapieplätze-Boxen sind nur für Leitung sichtbar
+  const istLeitung = state.user.role === 'leitung';
+  const overview = document.getElementById('plaetzeOverviewCard');
+  const config = document.getElementById('plaetzeConfigCard');
+  if(overview) overview.style.display = istLeitung ? '' : 'none';
+  if(config) config.style.display = istLeitung ? '' : 'none';
   // Wenn aktueller Tab nicht erlaubt: zum ersten erlaubten wechseln
   const activeBtn = document.querySelector('#tabs button.active');
   if(activeBtn && !allowed.includes(activeBtn.dataset.tab)){
@@ -2135,6 +2174,8 @@ document.querySelector('#stammTable').addEventListener('click', e=>{
       const el = formS.querySelector(`[name="${k}"]`); if(el) el.value = v||'';
     });
     formS.querySelector('[name=id]').value = s.id;
+    // Alle Sections aufklappen, damit die geladenen Daten sichtbar sind
+    formS.querySelectorAll('details.stamm-section').forEach(d => d.open = true);
     renderDokumente(s.id);
     formS.scrollIntoView({behavior:'smooth', block:'start'});
   }

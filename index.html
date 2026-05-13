@@ -519,13 +519,13 @@
       <span class="right legend">Maximale Anzahl Klient:innen pro Therapeut:in</span>
     </div>
     <div style="overflow-x:auto;margin-top:8px">
-      <table id="therTable">
+      <table id="therTable" class="responsive">
         <thead><tr><th>Therapeut:in</th><th>Rolle</th><th>Max Plätze</th><th>Belegt</th><th>Frei</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
-    <form id="formTher" class="grid grid-4" style="margin-top:14px;background:var(--primary-soft);padding:12px;border-radius:8px">
-      <div><label>Name (z.B. „Hohmann, Jeannine")</label><input name="name" required></div>
+    <form id="formTher" class="grid grid-2" style="margin-top:14px;background:var(--primary-soft);padding:14px;border-radius:8px">
+      <div style="grid-column:1/-1"><label>Name (z. B. „Hohmann, Jeannine")</label><input name="name" required placeholder="Nachname, Vorname"></div>
       <div>
         <label>Rolle</label>
         <select name="rolle">
@@ -533,8 +533,8 @@
           <option value="honorar">Honorarkraft</option>
         </select>
       </div>
-      <div><label>Max. Therapieplätze</label><input name="maxPlaetze" type="number" min="1" max="50" required placeholder="z.B. 20 oder 8"></div>
-      <div style="display:flex;align-items:flex-end"><button type="submit" class="btn">Hinzufügen / Aktualisieren</button></div>
+      <div><label>Max. Therapieplätze</label><input name="maxPlaetze" type="number" min="1" max="50" required placeholder="20 oder 8"></div>
+      <div style="grid-column:1/-1"><button type="submit" class="btn" style="width:100%">Hinzufügen / Aktualisieren</button></div>
     </form>
   </div>
 
@@ -2250,11 +2250,12 @@ function renderTherTable(){
     const max = parseInt(t.maxPlaetze)||0;
     const frei = Math.max(0, max - belegt);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><strong>${t.name}</strong></td>
-      <td>${t.rolle||''}</td>
-      <td>${max}</td>
-      <td>${belegt}</td>
-      <td><span class="pill ${quote(belegt,max)}">${frei}</span></td>
+    tr.innerHTML = `
+      <td><strong>${t.name}</strong> <span class="legend">${t.rolle||''}</span></td>
+      <td data-label="Rolle">${t.rolle||''}</td>
+      <td data-label="Max Plätze">${max}</td>
+      <td data-label="Belegt">${belegt}</td>
+      <td data-label="Frei"><span class="pill ${quote(belegt,max)}">${frei}</span></td>
       <td>
         <button class="btn small ghost" data-edit-ther="${i}">Bearbeiten</button>
         <button class="btn small ghost" data-del-ther="${i}">Entfernen</button>

@@ -451,6 +451,26 @@
         <input name="kostenzusage" placeholder="z. B. Privat / JA bis 31.12.2026, 40 Std">
       </div>
 
+      <div style="grid-column:1/-1"><hr><strong>Dokumente (PDF, JPG)</strong> <span class="legend">– z. B. Vertrag, DSGVO-Erklärung, Bericht</span></div>
+      <div style="grid-column:1/-1" id="dokumenteBereich"></div>
+      <div style="grid-column:span 2">
+        <label>Neue Datei hochladen</label>
+        <input type="file" id="dateiUpload" accept=".pdf,.jpg,.jpeg,.png">
+      </div>
+      <div>
+        <label>Sichtbarkeit</label>
+        <select id="dateiSicht">
+          <option value="alle">Alle Therapeut:innen</option>
+          <option value="leitung">Nur Leitung</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button type="button" class="btn" id="btnDateiUpload">⤒ Hochladen</button>
+      </div>
+      <div style="grid-column:1/-1" class="legend">
+        Hinweis: Dateien werden direkt im Stammdatensatz gespeichert. Empfehlung: max. 2 MB pro Datei.
+      </div>
+
       <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn ghost" id="btnFromErst">Aus Erstkontakt übernehmen …</button>
         <button type="reset" class="btn ghost">Zurücksetzen</button>
@@ -1040,8 +1060,8 @@ document.getElementById('userName').value = state.user.name;
    Festangestellte (therapeut) und Leitung sehen alles. */
 const TAB_ACCESS = {
   leitung:   ['erfassen','doku','stammdaten','warteliste','wjh','abrechnung','uebersicht','export'],
-  therapeut: ['erfassen','doku'],   // wie Honorarkraft – nur arbeitsrelevante Tabs
-  honorar:   ['erfassen','doku']
+  therapeut: ['erfassen','doku','stammdaten'],   // Stammdaten der eigenen Klient:innen
+  honorar:   ['erfassen','doku','stammdaten']    // Stammdaten der eigenen Klient:innen
 };
 
 function applyRoleTabVisibility(){
@@ -1076,8 +1096,8 @@ function isOwn(stammOrEinheit, key){
 }
 function canSeeStamm(s){
   if(state.user.role==='leitung') return true;
-  if(state.user.role==='therapeut') return true;          // alle lesen
-  return isOwn(s, 'therapeutin');                          // honorar: nur eigene
+  // Therapeut:in + Honorarkraft: nur Klient:innen, denen sie zugeordnet sind
+  return isOwn(s, 'therapeutin');
 }
 function canEditStamm(s){
   if(state.user.role==='leitung') return true;
@@ -1090,8 +1110,8 @@ function canSeeEinheit(e){
 function roleNoticeText(){
   const u = state.user.name?.trim() || '–';
   if(state.user.role==='leitung')   return `Rolle <strong>Leitung</strong>: vollständiger Zugriff auf alle Datensätze.`;
-  if(state.user.role==='honorar')   return `Rolle <strong>Honorarkraft</strong> (${u}): es werden nur Klient:innen angezeigt, bei denen <em>${u}</em> als Therapeutin hinterlegt ist.`;
-  return `Rolle <strong>Therapeut:in</strong> (${u}): Stammdaten aller Klient:innen sichtbar; Bearbeitung nur für die eigenen (Therapeutin = <em>${u}</em>).`;
+  if(state.user.role==='honorar')   return `Rolle <strong>Honorarkraft</strong> (${u}): nur Klient:innen sichtbar, bei denen <em>${u}</em> als Therapeutin hinterlegt ist.`;
+  return `Rolle <strong>Therapeut:in</strong> (${u}): nur eigene Klient:innen sichtbar (Therapeutin = <em>${u}</em>).`;
 }
 
 /* ============================================================
@@ -1695,8 +1715,18 @@ formS.addEventListener('submit', e=>{
     state.stammdaten.unshift(o);
   }
   save(); renderStammdaten(); refreshPatientList();
-  formS.reset(); formS.querySelector('[name=id]').value='';
-  toast('Stammdaten gespeichert');
+  // Beim NEU-Anlegen den neuen ID setzen, damit gleich Dateien hochgeladen werden können
+  if(!o.id && state.stammdaten[0]) {
+    // Neueste Stammdatensätze wurden mit unshift hinzugefügt
+    const newest = state.stammdaten[0];
+    formS.querySelector('[name=id]').value = newest.id;
+    renderDokumente(newest.id);
+    toast('Stammdaten gespeichert – jetzt Dateien hochladen möglich');
+  } else {
+    formS.reset(); formS.querySelector('[name=id]').value='';
+    renderDokumente(null);
+    toast('Stammdaten gespeichert');
+  }
 
   // Automatische Verknüpfung mit WJH bei Jugendamt-Vertrag
   if(o.vertragstyp === 'Jugendamt' && o.az){
@@ -1728,6 +1758,99 @@ formS.addEventListener('submit', e=>{
       }
     }
   }
+});
+
+/* === Datei-Upload / Dokument-Verwaltung pro Stammdatensatz === */
+
+function formatBytes(b){
+  if(b < 1024) return b + ' B';
+  if(b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+function canSeeDoc(doc){
+  // Sichtbarkeit "leitung" = nur Leitung
+  if(doc.sichtbarkeit === 'leitung' && state.user.role !== 'leitung') return false;
+  return true;
+}
+
+function renderDokumente(stammId){
+  const div = document.getElementById('dokumenteBereich');
+  if(!div) return;
+  const s = stammId ? state.stammdaten.find(x=>x.id===stammId) : null;
+  const dokumente = (s && s.dokumente) || [];
+  const visible = dokumente.filter(canSeeDoc);
+  if(!stammId){
+    div.innerHTML = '<div class="legend" style="padding:8px 0">Erst Stammdatensatz speichern, dann lassen sich Dokumente zuordnen.</div>';
+    return;
+  }
+  if(!visible.length){
+    div.innerHTML = '<div class="legend" style="padding:8px 0">Noch keine Dokumente hochgeladen.</div>';
+    return;
+  }
+  div.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' +
+    visible.map(doc => {
+      const icon = doc.type && doc.type.startsWith('image/') ? '🖼' : '📄';
+      const sichtPill = doc.sichtbarkeit === 'leitung'
+        ? '<span class="pill bad" title="nur Leitung sichtbar">🔒 Leitung</span>'
+        : '<span class="pill ok" title="alle Therapeut:innen sichtbar">👁 Alle</span>';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff">
+        <span style="font-size:20px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.name}</div>
+          <div class="legend">${formatBytes(doc.size||0)} · ${doc.uploaded_at||''} · von ${doc.uploaded_by||'—'}</div>
+        </div>
+        ${sichtPill}
+        <a href="${doc.dataUrl}" download="${doc.name}" class="btn small ghost" title="Herunterladen">⤓</a>
+        <button type="button" class="btn small ghost" data-del-doc="${doc.id}" title="Löschen">✕</button>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+document.getElementById('btnDateiUpload').addEventListener('click', ()=>{
+  const fileEl = document.getElementById('dateiUpload');
+  const file = fileEl.files[0];
+  if(!file){ toast('Bitte zuerst eine Datei wählen'); return; }
+  const stammId = formS.querySelector('[name=id]').value;
+  if(!stammId){ toast('Bitte zuerst Stammdatensatz speichern, dann Datei hochladen'); return; }
+  if(file.size > 5*1024*1024){
+    if(!confirm(`Diese Datei ist ${formatBytes(file.size)} groß. Größere Dateien verlangsamen die App.\n\nTrotzdem hochladen?`)) return;
+  }
+  const sicht = document.getElementById('dateiSicht').value;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const stamm = state.stammdaten.find(x=>x.id===stammId);
+    if(!stamm) return;
+    if(!stamm.dokumente) stamm.dokumente = [];
+    stamm.dokumente.push({
+      id: uid(),
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: e.target.result,
+      sichtbarkeit: sicht,
+      uploaded_at: new Date().toISOString().slice(0,10),
+      uploaded_by: state.user.name || '—'
+    });
+    save();
+    renderDokumente(stammId);
+    fileEl.value = '';
+    toast('Datei hochgeladen');
+  };
+  reader.readAsDataURL(file);
+});
+
+// Lösch-Handler für einzelne Dokumente
+document.getElementById('dokumenteBereich').addEventListener('click', e => {
+  const docId = e.target.dataset.delDoc;
+  if(!docId) return;
+  if(!confirm('Diese Datei wirklich löschen?')) return;
+  const stammId = formS.querySelector('[name=id]').value;
+  const stamm = state.stammdaten.find(x=>x.id===stammId);
+  if(!stamm || !stamm.dokumente) return;
+  stamm.dokumente = stamm.dokumente.filter(d => d.id !== docId);
+  save();
+  renderDokumente(stammId);
 });
 
 document.getElementById('btnFromErst').addEventListener('click', ()=>{
@@ -2012,6 +2135,7 @@ document.querySelector('#stammTable').addEventListener('click', e=>{
       const el = formS.querySelector(`[name="${k}"]`); if(el) el.value = v||'';
     });
     formS.querySelector('[name=id]').value = s.id;
+    renderDokumente(s.id);
     formS.scrollIntoView({behavior:'smooth', block:'start'});
   }
   if(delId){
@@ -2651,6 +2775,7 @@ document.querySelector('#weekTable').addEventListener('click', e=>{
       const el = formS.querySelector(`[name="${k}"]`); if(el) el.value = v||'';
     });
     formS.querySelector('[name=id]').value = s.id;
+    renderDokumente(s.id);
     formS.scrollIntoView({behavior:'smooth', block:'start'});
   }, 50);
 });

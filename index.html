@@ -584,7 +584,7 @@
       <span class="right muted" id="stammCount"></span>
     </div>
     <div class="row toolbar">
-      <input type="search" id="stammSearch" placeholder="Suche Name, Therapeut:in, Aktenzeichen …" style="max-width:340px">
+      <input type="search" id="stammSearch" placeholder="🔍 Suche Name, Therapeut:in, Aktenzeichen …" style="max-width:340px">
       <span class="right muted legend">⚠ = Pflichtdokument fehlt</span>
     </div>
     <div style="overflow-x:auto">
@@ -879,8 +879,11 @@
   </div>
 
   <div class="card">
-    <h2>Aktenübersicht – Stunden je Monat</h2>
-    <p class="muted" style="margin-top:0">Stunden werden aus durchgeführten Therapieeinheiten mit Finanzierung „Jugendamt (WJH)" berechnet (Patient-Match über Name).</p>
+    <div class="row">
+      <h2 style="margin:0">Aktenübersicht – Stunden je Monat</h2>
+      <input type="search" id="wjhSearch" placeholder="🔍 Suche Name, Aktenzeichen …" style="max-width:340px;margin-left:auto">
+    </div>
+    <p class="muted" style="margin-top:6px">Stunden werden aus durchgeführten Therapieeinheiten mit Finanzierung „Jugendamt (WJH)" berechnet (Patient-Match über Name).</p>
     <div style="overflow-x:auto">
       <table id="wjhTable" class="responsive">
         <thead><tr>
@@ -2548,10 +2551,19 @@ function monthlyHoursForName(name){
 
 function renderWJH(){
   const tb = document.querySelector('#wjhTable tbody'); tb.innerHTML='';
+  const searchEl = document.getElementById('wjhSearch');
+  const q = (searchEl && searchEl.value || '').toLowerCase().trim();
   if(!state.wjh.length){
     tb.innerHTML = '<tr><td colspan="21" class="empty">Noch keine WJH-Akten.</td></tr>'; return;
   }
-  state.wjh.forEach(w=>{
+  const visible = state.wjh.filter(w => {
+    if(!q) return true;
+    return [w.name, w.az, w.alphabet, w.genehmigung].some(v => (v||'').toLowerCase().includes(q));
+  });
+  if(!visible.length){
+    tb.innerHTML = `<tr><td colspan="21" class="empty">Keine Treffer für „${q}".</td></tr>`; return;
+  }
+  visible.forEach(w=>{
     const m = monthlyHoursForName(w.name||'');
     const verbraucht = m.reduce((a,b)=>a+b,0);
     const bewilligt = berechneBewilligteEinheiten(w.bewilligung_von, w.bewilligung_bis, w.stunden_pro_woche);
@@ -2595,6 +2607,12 @@ function renderWJH(){
     tb.appendChild(tr);
   });
 }
+// Such-Filter: bei Eingabe neu rendern
+const wjhSearchEl = document.getElementById('wjhSearch');
+if(wjhSearchEl){
+  wjhSearchEl.addEventListener('input', renderWJH);
+}
+
 document.querySelector('#wjhTable').addEventListener('click', e=>{
   const viewId = e.target.dataset.viewW;
   if(viewId){

@@ -1037,7 +1037,7 @@
       – damit mehrere Therapeut:innen gleichzeitig arbeiten können.
     </div>
     <div class="grid grid-2">
-      <button class="btn" data-export="lt-stunden">⤓ LT-Stunden Hohmann (Privat, Festangestellt)</button>
+      <button class="btn" data-export="lt-stunden">⤓ Hohmann LT-Stunden (Ju + P)</button>
       <button class="btn" data-export="lt-honorar">⤓ LT-Stunden Honorarkräfte (Privat)</button>
       <button class="btn" data-export="warteliste">⤓ Warteliste &amp; Erstkontakt</button>
       <button class="btn" data-export="wjh">⤓ Wirtschaftliche Jugendhilfe</button>
@@ -2798,39 +2798,134 @@ function renderAbrechnung(){
 
 document.getElementById('abrMonth').addEventListener('change', renderAbrechnung);
 
-// Einfacher Druck/PDF für Jugendamt-Abrechnung (nur AZ, Name, Stunden)
+// Druck/PDF für Jugendamt-Abrechnung mit detaillierten Terminangaben
 document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
   const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
   const klienten = state.stammdaten.filter(canSeeStamm).filter(isJugendamtKlient);
-  let rows = '';
-  let sumStd = 0;
+  let blocks = '';
+  let summaryRows = '';
+  let sumStdGesamt = 0;
+  let sumEinheitenGesamt = 0;
+
+  // Statuskürzel kompakt
+  const stKurz = (s)=>{
+    if(s==='Durchgeführt') return 'D';
+    if(s==='Abgesagt durch Eltern') return 'AE';
+    if(s==='Ersatztermin') return 'ET';
+    if(s==='Abgesagt durch Therapeut:in') return 'AT';
+    return s||'';
+  };
+  // Datum hübsch dd.mm.yyyy
+  const fmtDe = (iso)=>{
+    if(!iso) return '';
+    const [y,m,d] = iso.split('-');
+    return d && m && y ? `${d}.${m}.${y}` : iso;
+  };
+
   klienten.forEach(s => {
-    const ein = einheitenInMonat(s, ym);
+    const ein = einheitenInMonat(s, ym).slice().sort((a,b)=> (a.datum||'').localeCompare(b.datum||''));
     if(!ein.length) return;
     const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
-    sumStd += std;
-    rows += `<tr><td>${s.az||''}</td><td>${s.k_nachname||''}, ${s.k_vorname||''}</td><td style="text-align:right">${std}</td></tr>`;
+    sumStdGesamt += std;
+    sumEinheitenGesamt += ein.length;
+    const klName = `${s.k_nachname||''}, ${s.k_vorname||''}`;
+
+    // Zusammenfassungs-Zeile oben
+    summaryRows += `<tr>
+      <td>${s.az||''}</td>
+      <td>${klName}</td>
+      <td style="text-align:center">${ein.length}</td>
+      <td style="text-align:right">${std}</td>
+    </tr>`;
+
+    // Detail-Block je Klient:in
+    const detailRows = ein.map(e=>{
+      const ue = Math.round(dauerInUE(e.dauer||45)*10)/10;
+      return `<tr>
+        <td>${fmtDe(e.datum)}</td>
+        <td>${e.wochentag||''}</td>
+        <td>${e.uhrzeit||''}</td>
+        <td style="text-align:right">${e.dauer||45} min</td>
+        <td style="text-align:right">${ue}</td>
+        <td>${stKurz(e.status)}</td>
+        <td>${e.therapeut||''}</td>
+        <td>${e.leistung||''}</td>
+      </tr>`;
+    }).join('');
+
+    blocks += `
+      <div class="klient-block">
+        <h2>${s.az||'(kein AZ)'} &middot; ${klName}</h2>
+        <div class="meta-row">
+          ${s.geburtsdatum?`Geb.: ${fmtDe(s.geburtsdatum)} &nbsp;·&nbsp; `:''}
+          ${s.diagnose?`Diagnose: ${s.diagnose} &nbsp;·&nbsp; `:''}
+          Termine im Monat: <strong>${ein.length}</strong> &nbsp;·&nbsp;
+          Therapieeinheiten: <strong>${std}</strong>
+        </div>
+        <table class="detail">
+          <thead>
+            <tr>
+              <th>Datum</th><th>Wt.</th><th>Uhrzeit</th>
+              <th style="text-align:right">Dauer</th>
+              <th style="text-align:right">UE</th>
+              <th>Status</th><th>Therapeut:in</th><th>Leistung</th>
+            </tr>
+          </thead>
+          <tbody>${detailRows}</tbody>
+        </table>
+      </div>`;
   });
-  const win = window.open('', '_blank', 'width=800,height=900');
+
+  const win = window.open('', '_blank', 'width=900,height=1000');
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Jugendamt-Abrechnung ${ym}</title>
     <style>
       body{font-family:Arial,sans-serif;margin:24px;color:#2D2429}
-      h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px}
-      table{width:100%;border-collapse:collapse;margin-top:20px}
-      th,td{padding:8px 10px;border-bottom:1px solid #E5DCDE;text-align:left}
-      th{background:#F8F2F3;color:#6F2A2F;text-transform:uppercase;font-size:12px}
-      tfoot td{font-weight:bold;border-top:2px solid #9E4047}
+      h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px;margin-top:0}
+      h2{color:#6F2A2F;margin:18px 0 6px 0;font-size:15px;border-bottom:1px solid #E5DCDE;padding-bottom:4px}
+      table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+      th,td{padding:5px 8px;border-bottom:1px solid #E5DCDE;text-align:left;vertical-align:top}
+      th{background:#F8F2F3;color:#6F2A2F;text-transform:uppercase;font-size:11px}
+      tfoot td{font-weight:bold;border-top:2px solid #9E4047;background:#F8F2F3}
       .meta{color:#7A6D6D;font-size:12px;margin-bottom:14px}
-      @media print{ button{display:none} }
+      .meta-row{color:#5A4F52;font-size:12px;margin:2px 0 4px}
+      .klient-block{margin-bottom:18px;page-break-inside:avoid}
+      .summary{margin-bottom:30px;border:1px solid #E5DCDE;border-radius:6px;overflow:hidden}
+      .summary th{background:#9E4047;color:#fff}
+      .legend{font-size:11px;color:#7A6D6D;margin-top:6px}
+      @media print{ button{display:none} body{margin:10mm} }
+      @page { size: A4; margin: 12mm }
     </style></head><body>
     <button onclick="window.print()" style="float:right;padding:8px 14px;background:#9E4047;color:white;border:0;border-radius:6px;cursor:pointer">🖨 Drucken / als PDF</button>
     <h1>Jugendamt-Abrechnung ${ym}</h1>
     <div class="meta">Institut Lernen · Erstellt: ${new Date().toLocaleString('de-DE')}</div>
-    <table>
-      <thead><tr><th>Aktenzeichen</th><th>Klient:in</th><th style="text-align:right">Therapieeinheiten</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="2">Gesamt</td><td style="text-align:right">${sumStd}</td></tr></tfoot>
-    </table>
+
+    <div class="summary">
+      <table>
+        <thead><tr>
+          <th>Aktenzeichen</th><th>Klient:in</th>
+          <th style="text-align:center">Termine</th>
+          <th style="text-align:right">Therapieeinheiten</th>
+        </tr></thead>
+        <tbody>${summaryRows||'<tr><td colspan="4" style="text-align:center;color:#7A6D6D">Keine abrechenbaren Einheiten im gewählten Monat</td></tr>'}</tbody>
+        <tfoot><tr>
+          <td colspan="2">Gesamt</td>
+          <td style="text-align:center">${sumEinheitenGesamt}</td>
+          <td style="text-align:right">${Math.round(sumStdGesamt*10)/10}</td>
+        </tr></tfoot>
+      </table>
+    </div>
+
+    <h1 style="font-size:18px">Detaillierte Terminangaben</h1>
+    ${blocks||'<p style="color:#7A6D6D">Keine Termine vorhanden.</p>'}
+
+    <div class="legend">
+      <strong>Status-Legende:</strong>
+      D = Durchgeführt &nbsp;·&nbsp;
+      ET = Ersatztermin &nbsp;·&nbsp;
+      AE = Abgesagt durch Eltern (zählt zur Abrechnung) &nbsp;·&nbsp;
+      AT = Abgesagt durch Therapeut:in (nicht zählend)
+      <br>1 Therapieeinheit (UE) = 45 Minuten
+    </div>
     </body></html>`);
   win.document.close();
 });
@@ -3140,13 +3235,34 @@ function styleSheet(ws, opts){
 function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
   // filterTherRolle: 'festangestellt' | 'honorar' | undefined (= alle)
   const header = includeTherapeutCol
-    ? ['Wochentag','Name/Uhrzeit','Therapeutin', ...MONATE,'Dez 25','x']
-    : ['Wochentag','Name','Uhrzeit', ...MONATE,'Dez 25','x'];
+    ? ['Wochentag','Name/Uhrzeit','Therapeutin','Finanz.', ...MONATE,'Dez 25','x']
+    : ['Wochentag','Name','Uhrzeit','Finanz.', ...MONATE,'Dez 25','x'];
   // Legende als erste Zeile (vor dem Header)
   const rows = [
-    ['Legende: (E) = Eltern-Absage, wird abgerechnet · (R) = Ersatztermin · ohne Suffix = Durchgeführt', ...Array(MONATE.length+4).fill('')],
+    ['Legende: Ju = Jugendamt (WJH) · P = Privat · (E) = Eltern-Absage, wird abgerechnet · (R) = Ersatztermin · ohne Suffix = Durchgeführt', ...Array(MONATE.length+5).fill('')],
     header
   ];
+
+  // Lookup: Patient (Name) -> Vertragstyp aus Stammdaten (Fallback, falls finanzierung in Einheit fehlt)
+  const stammByName = {};
+  state.stammdaten.forEach(s=>{
+    const nm = `${s.k_nachname||''}, ${s.k_vorname||''}`.trim();
+    if(nm && nm!==',') stammByName[nm] = s;
+  });
+
+  const finKuerzel = (fin) => {
+    if(fin==='Jugendamt (WJH)') return 'Ju';
+    if(fin==='Privat') return 'P';
+    return '';
+  };
+  const finFromStamm = (patient) => {
+    const s = stammByName[patient];
+    if(!s) return '';
+    if(s.vertragstyp === 'Jugendamt') return 'Ju';
+    if(['Miniabonnement','Standardvertrag','Privat offen'].includes(s.vertragstyp)) return 'P';
+    return '';
+  };
+
   const items = state.einheiten.filter(e=>{
     if(e.wochentag !== weekday) return false;
     // Alle Klient:innen (Privat + Jugendamt), aber nach Therapeut:innen-Rolle filtern
@@ -3156,7 +3272,9 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
   const slots = {};
   items.forEach(e=>{
     const key = (e.patient||'') + '|' + (e.uhrzeit||'') + '|' + (e.therapeut||'');
-    if(!slots[key]) slots[key] = {patient:e.patient, uhrzeit:e.uhrzeit, therapeut:e.therapeut, byMonth:Array(12).fill().map(()=>[])};
+    if(!slots[key]) slots[key] = {patient:e.patient, uhrzeit:e.uhrzeit, therapeut:e.therapeut, finSet:new Set(), byMonth:Array(12).fill().map(()=>[])};
+    const fk = finKuerzel(e.finanzierung);
+    if(fk) slots[key].finSet.add(fk);
     // Alle zählenden Status werden eingetragen (Durchgeführt + Eltern-Absage + Ersatz), Eltern-Absage als (E), Ersatz als (R)
     if(STATUS_ZAEHLT.includes(e.status) && e.datum){
       const d = new Date(e.datum);
@@ -3164,6 +3282,12 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
     }
   });
   Object.values(slots).forEach((s,idx)=>{
+    // Finanzierungs-Kennzeichnung pro Slot
+    let finMark = '';
+    if(s.finSet.size === 1) finMark = [...s.finSet][0];
+    else if(s.finSet.size > 1) finMark = [...s.finSet].sort().join('/'); // z. B. "Ju/P" bei Mischfällen
+    if(!finMark) finMark = finFromStamm(s.patient);
+
     const r = [];
     r.push(idx===0 ? weekday : '');
     if(includeTherapeutCol){
@@ -3173,6 +3297,7 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
       r.push(s.patient||'');
       r.push(s.uhrzeit||'');
     }
+    r.push(finMark);
     s.byMonth.forEach(arr=>{
       arr.sort((a,b)=>a.date - b.date);
       r.push(arr.map(x => x.date.toISOString().slice(0,10) + x.suffix).join(' / '));
@@ -3180,7 +3305,7 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
     r.push(''); r.push('');
     rows.push(r);
   });
-  if(rows.length===2) rows.push([weekday, '', '', ...Array(MONATE.length+2).fill('')]);
+  if(rows.length===2) rows.push([weekday, '', '', '', ...Array(MONATE.length+2).fill('')]);
   return XLSX.utils.aoa_to_sheet(rows);
 }
 
@@ -3190,7 +3315,7 @@ function exportLT(){
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
     XLSX.utils.book_append_sheet(wb, styleSheet(buildLTSheet(d, false, 'festangestellt'), {headerRows:2}), 'LT '+d);
   });
-  XLSX.writeFile(wb, 'LT-Stunden_'+(state.user.name||'Hohmann')+'.xlsx');
+  XLSX.writeFile(wb, 'Hohmann LT-Stunden.xlsx');
 }
 
 function exportHonorar(){

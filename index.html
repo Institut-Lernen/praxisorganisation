@@ -1082,13 +1082,56 @@
 
   <div class="card">
     <h2>Import / Backup</h2>
+    <p class="lead">
+      Tipp: Setze ein Backup-Passwort, dann wird die JSON-Datei <strong>AES-256-verschlüsselt</strong> gespeichert.
+      Ohne Passwort ist die Datei unverschlüsselt (alte Backups bleiben lesbar).
+    </p>
+    <div class="grid grid-2" style="margin-bottom:10px">
+      <div>
+        <label>Backup-Passwort (optional)</label>
+        <input type="password" id="backupPw" placeholder="leer = unverschlüsseltes Backup" autocomplete="new-password">
+      </div>
+      <div>
+        <label>Passwort bestätigen</label>
+        <input type="password" id="backupPw2" placeholder="erneut eingeben" autocomplete="new-password">
+      </div>
+    </div>
     <div class="row" style="gap:12px;flex-wrap:wrap">
       <button class="btn ghost" id="btnBackup">⤓ Backup-JSON herunterladen</button>
       <label class="btn ghost" style="cursor:pointer">⤒ Backup-JSON laden
-        <input type="file" id="restoreFile" accept="application/json" hidden>
+        <input type="file" id="restoreFile" accept=".json" hidden>
       </label>
       <button class="btn ghost" id="btnDemo">★ Demodaten laden</button>
     </div>
+    <div class="legend" style="margin-top:8px">
+      Verschlüsselte Backups erkennst du am Dateinamen-Zusatz <code>.enc.json</code> und am inneren Format <code>praxisorg-encrypted-v1</code>.
+      Beim Laden wird das Passwort abgefragt.
+    </div>
+  </div>
+
+  <div class="card" id="rollenPwCard">
+    <h2>🔐 Rollen-Zugriffspasswörter (nur Leitung)</h2>
+    <p class="lead">
+      Damit eine Honorarkraft oder Therapeut:in nicht einfach „Leitung" auswählen kann, lege hier
+      Passwörter für die beiden anderen Rollen fest. Die Rolle <strong>Leitung</strong> bleibt
+      passwortfrei (Standard für dich als Inhaberin). Passwörter werden mit PBKDF2-SHA-256
+      (200.000 Iterationen) gehasht gespeichert — niemand kann sie aus den App-Daten zurückrechnen.
+    </p>
+    <div class="grid grid-2">
+      <div>
+        <label>Therapeut:in-Passwort</label>
+        <input type="password" id="pwTherapeut" placeholder="leer = ohne Passwort" autocomplete="new-password">
+      </div>
+      <div>
+        <label>Honorarkraft-Passwort</label>
+        <input type="password" id="pwHonorar" placeholder="leer = ohne Passwort" autocomplete="new-password">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn ghost" id="btnRollenPwClear" type="button">Alle Passwörter entfernen</button>
+      <button class="btn" id="btnRollenPwSave" type="button">Passwörter speichern</button>
+    </div>
+    <div id="rollenPwStatus" class="legend" style="margin-top:8px"></div>
   </div>
 
   <div class="card">
@@ -1181,10 +1224,98 @@ document.getElementById('tabs').addEventListener('click', e=>{
 });
 
 /* ---- User ---- */
-document.getElementById('role').addEventListener('change', e=>{state.user.role=e.target.value;save();applyRoleTabVisibility();renderAll();});
 document.getElementById('userName').addEventListener('input', e=>{state.user.name=e.target.value;save();renderAll();});
 document.getElementById('role').value = state.user.role;
 document.getElementById('userName').value = state.user.name;
+
+/* Rollen-Zugriffspasswörter
+   Leitung benötigt KEIN Passwort (Default-Rolle der Inhaberin).
+   Wechsel auf Therapeut:in oder Honorarkraft erfordert (falls gesetzt) das jeweilige Passwort.
+   Speicherung: state.rollenPw = { therapeut:{salt,hash}, honorar:{salt,hash} } */
+async function hashRollenPw(klartext, saltBytes){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    'raw', enc.encode(klartext), {name:'PBKDF2'}, false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {name:'PBKDF2', salt:saltBytes, iterations:200000, hash:'SHA-256'},
+    baseKey, 256
+  );
+  return b64encode(bits);
+}
+async function setRollenPasswort(rolle, klartext){
+  if(!state.rollenPw) state.rollenPw = {};
+  if(!klartext){
+    delete state.rollenPw[rolle];
+    save(); return;
+  }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await hashRollenPw(klartext, salt);
+  state.rollenPw[rolle] = { salt: b64encode(salt), hash };
+  save();
+}
+async function pruefeRollenPasswort(rolle, klartext){
+  if(!state.rollenPw || !state.rollenPw[rolle]) return true;   // kein Passwort gesetzt → freier Wechsel
+  const e = state.rollenPw[rolle];
+  const calc = await hashRollenPw(klartext, b64decode(e.salt));
+  return calc === e.hash;
+}
+
+const roleSelectEl = document.getElementById('role');
+let _lastRoleValue = roleSelectEl.value;
+roleSelectEl.addEventListener('change', async e => {
+  const newRole = e.target.value;
+  // Leitung: kein Passwort nötig
+  if(newRole === 'leitung'){
+    state.user.role = newRole; save(); applyRoleTabVisibility(); renderAll();
+    _lastRoleValue = newRole;
+    return;
+  }
+  // Therapeut:in / Honorarkraft: Passwort prüfen, sofern eines gesetzt ist
+  if(state.rollenPw && state.rollenPw[newRole]){
+    const pw = prompt(`Bitte Passwort für Rolle „${newRole==='therapeut'?'Therapeut:in':'Honorarkraft'}" eingeben:`);
+    if(pw === null){ e.target.value = _lastRoleValue; return; }
+    const ok = await pruefeRollenPasswort(newRole, pw);
+    if(!ok){
+      toast('Falsches Passwort – Rollenwechsel abgelehnt.');
+      e.target.value = _lastRoleValue;
+      return;
+    }
+  }
+  state.user.role = newRole; save(); applyRoleTabVisibility(); renderAll();
+  _lastRoleValue = newRole;
+});
+
+// Status anzeigen + Speichern + Reset
+function renderRollenPwStatus(){
+  const box = document.getElementById('rollenPwStatus'); if(!box) return;
+  const pw = state.rollenPw || {};
+  const t = pw.therapeut ? '✓ gesetzt' : '— kein Passwort (Rolle frei wählbar)';
+  const h = pw.honorar   ? '✓ gesetzt' : '— kein Passwort (Rolle frei wählbar)';
+  box.innerHTML = `Therapeut:in-Passwort: <strong>${t}</strong> &nbsp;·&nbsp; Honorarkraft-Passwort: <strong>${h}</strong>`;
+}
+document.getElementById('btnRollenPwSave').addEventListener('click', async ()=>{
+  const t = document.getElementById('pwTherapeut').value;
+  const h = document.getElementById('pwHonorar').value;
+  if(t && t.length < 6){ toast('Therapeut:in-Passwort: min. 6 Zeichen.'); return; }
+  if(h && h.length < 6){ toast('Honorarkraft-Passwort: min. 6 Zeichen.'); return; }
+  if(t) await setRollenPasswort('therapeut', t);
+  if(h) await setRollenPasswort('honorar', h);
+  // Leere Eingaben lassen vorhandene Passwörter unverändert
+  document.getElementById('pwTherapeut').value = '';
+  document.getElementById('pwHonorar').value = '';
+  toast('Rollen-Passwörter aktualisiert ✓');
+  renderRollenPwStatus();
+});
+document.getElementById('btnRollenPwClear').addEventListener('click', ()=>{
+  if(!confirm('Wirklich alle Rollen-Passwörter entfernen?\n\nDanach kann jede:r Nutzer:in wieder frei zwischen den Rollen wechseln.')) return;
+  state.rollenPw = {};
+  save();
+  document.getElementById('pwTherapeut').value = '';
+  document.getElementById('pwHonorar').value = '';
+  toast('Rollen-Passwörter entfernt');
+  renderRollenPwStatus();
+});
 
 /* ---- Tab-Sichtbarkeit nach Rolle ----
    Honorarkräfte sehen nur die zwei Arbeitstabs.
@@ -1200,12 +1331,14 @@ function applyRoleTabVisibility(){
   document.querySelectorAll('#tabs button[data-tab]').forEach(btn => {
     btn.style.display = allowed.includes(btn.dataset.tab) ? '' : 'none';
   });
-  // Therapieplätze-Boxen sind nur für Leitung sichtbar
+  // Therapieplätze-Boxen + Rollen-Passwort-Konfiguration sind nur für Leitung sichtbar
   const istLeitung = state.user.role === 'leitung';
   const overview = document.getElementById('plaetzeOverviewCard');
   const config = document.getElementById('plaetzeConfigCard');
   if(overview) overview.style.display = istLeitung ? '' : 'none';
   if(config) config.style.display = istLeitung ? '' : 'none';
+  const rollenPwBox = document.getElementById('rollenPwCard');
+  if(rollenPwBox) rollenPwBox.style.display = istLeitung ? '' : 'none';
   // Wenn aktueller Tab nicht erlaubt: zum ersten erlaubten wechseln
   const activeBtn = document.querySelector('#tabs button.active');
   if(activeBtn && !allowed.includes(activeBtn.dataset.tab)){
@@ -3958,16 +4091,95 @@ document.querySelectorAll('[data-export]').forEach(b=>{
 });
 
 /* ---- Backup / Restore / Demo / Reset ---- */
-document.getElementById('btnBackup').addEventListener('click', ()=>{
-  const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'});
+
+/* Crypto-Helfer für passwortbasierte Backup-Verschlüsselung
+   Algorithmus: AES-GCM-256 mit PBKDF2(SHA-256, 200.000 Iterationen)
+   Format: praxisorg-encrypted-v1 */
+async function deriveKey(passphrase, saltBytes){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    'raw', enc.encode(passphrase),
+    {name:'PBKDF2'}, false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:saltBytes, iterations:200000, hash:'SHA-256'},
+    baseKey,
+    {name:'AES-GCM', length:256},
+    false, ['encrypt','decrypt']
+  );
+}
+function b64encode(arrBuf){
+  const bytes = new Uint8Array(arrBuf);
+  let s = '';
+  for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function b64decode(str){
+  const bin = atob(str);
+  const out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function encryptBackup(jsonText, passphrase){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(passphrase, salt);
+  const ct   = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(jsonText));
+  return {
+    format: 'praxisorg-encrypted-v1',
+    algorithm: 'AES-GCM-256',
+    kdf: 'PBKDF2-SHA256-200000',
+    salt: b64encode(salt),
+    iv: b64encode(iv),
+    ciphertext: b64encode(ct),
+    created: new Date().toISOString()
+  };
+}
+async function decryptBackup(envelope, passphrase){
+  if(envelope.format !== 'praxisorg-encrypted-v1') throw new Error('Unbekanntes Format');
+  const salt = b64decode(envelope.salt);
+  const iv   = b64decode(envelope.iv);
+  const ct   = b64decode(envelope.ciphertext);
+  const key  = await deriveKey(passphrase, salt);
+  const pt   = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
+document.getElementById('btnBackup').addEventListener('click', async ()=>{
+  const pw  = document.getElementById('backupPw').value;
+  const pw2 = document.getElementById('backupPw2').value;
+  const dataJson = JSON.stringify(state, null, 2);
+  let blob, dateipart = 'praxisorg_backup_'+new Date().toISOString().slice(0,10);
+
+  if(pw || pw2){
+    if(pw !== pw2){ toast('Passwörter stimmen nicht überein.'); return; }
+    if(pw.length < 8){ toast('Bitte Passwort mit min. 8 Zeichen wählen.'); return; }
+    try{
+      const env = await encryptBackup(dataJson, pw);
+      blob = new Blob([JSON.stringify(env, null, 2)], {type:'application/json'});
+      dateipart += '.enc';
+      toast('Verschlüsseltes Backup gespeichert ✓');
+    }catch(err){
+      console.error(err);
+      toast('Verschlüsselung fehlgeschlagen: '+err.message);
+      return;
+    }
+  } else {
+    if(!confirm('Backup OHNE Passwort speichern?\n\nDie Datei ist dann lesbar im Klartext.\nFür Daten mit Klient:innenbezug Passwort empfohlen.')) return;
+    blob = new Blob([dataJson], {type:'application/json'});
+    toast('Backup gespeichert (unverschlüsselt) ✓');
+  }
+
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'praxisorg_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.download = dateipart + '.json';
   a.click();
+  // Passwortfelder leeren (nicht im DOM stehen lassen)
+  document.getElementById('backupPw').value = '';
+  document.getElementById('backupPw2').value = '';
   // Zeitstempel speichern und Banner aktualisieren
   localStorage.setItem('praxisorg_last_backup', new Date().toISOString());
   renderBackupBanner();
-  toast('Backup gespeichert ✓');
 });
 
 /* ---- Backup-Erinnerungs-Banner ----
@@ -4021,9 +4233,38 @@ function renderBackupBanner(){
 document.getElementById('restoreFile').addEventListener('change', e=>{
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
-  r.onload = ()=>{
-    try{ state = Object.assign(defaultState(), JSON.parse(r.result)); save(); renderAll(); toast('Backup geladen'); }
-    catch(_){ toast('Datei nicht lesbar'); }
+  r.onload = async ()=>{
+    let raw;
+    try{ raw = JSON.parse(r.result); }
+    catch(_){ toast('Datei nicht lesbar'); return; }
+
+    // Verschlüsseltes Backup erkannt?
+    if(raw && raw.format === 'praxisorg-encrypted-v1'){
+      const pw = prompt('Backup ist verschlüsselt. Bitte Passwort eingeben:');
+      if(!pw){ toast('Abgebrochen'); return; }
+      try{
+        const plain = await decryptBackup(raw, pw);
+        const parsed = JSON.parse(plain);
+        if(!confirm('Backup entschlüsselt. Aktuelle Daten in diesem Browser werden überschrieben. Fortfahren?')) return;
+        state = Object.assign(defaultState(), parsed);
+        save(); renderAll();
+        toast('Verschlüsseltes Backup geladen ✓');
+      }catch(err){
+        console.error(err);
+        toast('Entschlüsselung fehlgeschlagen – falsches Passwort?');
+      }
+      e.target.value = '';
+      return;
+    }
+
+    // Klartext-Backup (alte Variante)
+    try{
+      if(!confirm('Aktuelle Daten in diesem Browser werden überschrieben. Fortfahren?')) return;
+      state = Object.assign(defaultState(), raw);
+      save(); renderAll();
+      toast('Backup geladen');
+    }catch(_){ toast('Datei nicht lesbar'); }
+    e.target.value = '';
   };
   r.readAsText(f);
 });
@@ -4126,6 +4367,7 @@ function renderAll(){
   document.getElementById('userName').value = state.user.name;
   applyRoleTabVisibility();
   renderBackupBanner();
+  renderRollenPwStatus();
 }
 
 rebuildObs();

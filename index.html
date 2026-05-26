@@ -284,6 +284,9 @@
 
 <main>
 
+<!-- Backup-Erinnerungs-Banner (wird per JS gesteuert) -->
+<div id="backupBanner" style="display:none"></div>
+
 <!-- ====================== TAB: ERFASSEN ====================== -->
 <section data-panel="erfassen">
   <div class="card">
@@ -732,6 +735,32 @@
       </div>
       <input type="hidden" name="id">
     </form>
+  </div>
+
+  <div class="card">
+    <h2>Verlaufsbericht aus mehreren Sitzungen</h2>
+    <p class="lead">Führt mehrere Stundendokumentationen einer Klient:in zu einem zusammenhängenden Bericht zusammen (z. B. für Verlaufsbericht ans Jugendamt oder Elterngespräch).</p>
+    <div class="grid grid-4">
+      <div>
+        <label>Klient:in</label>
+        <select id="vbKlient"><option value="">— bitte wählen —</option></select>
+      </div>
+      <div><label>Zeitraum von</label><input type="date" id="vbVon"></div>
+      <div><label>Zeitraum bis</label><input type="date" id="vbBis"></div>
+      <div>
+        <label>Detail-Tiefe</label>
+        <select id="vbDetail">
+          <option value="kurz">Kurz (Stundenziel + Vereinbarungen)</option>
+          <option value="standard" selected>Standard (alle Hauptfelder)</option>
+          <option value="voll">Vollständig (inkl. Beobachtungsraster)</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn ghost" id="btnVbReset" type="button">Zurücksetzen</button>
+      <button class="btn" id="btnVbErstellen" type="button">📄 Verlaufsbericht erstellen</button>
+    </div>
+    <div id="vbInfo" class="legend" style="margin-top:8px"></div>
   </div>
 
   <div class="card">
@@ -1270,29 +1299,35 @@ formE.addEventListener('submit', e=>{
   if(neuId && (o.status === 'Durchgeführt' || o.status === 'Geplant') && o.patient && o.datum){
     setTimeout(() => {
       if(confirm(`Termin gespeichert: ${o.patient} am ${o.datum}.\n\nGleich Stundendokumentation anlegen?`)){
-        // Wechsel zum Doku-Tab
-        document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'doku'));
-        document.querySelectorAll('section[data-panel]').forEach(p => p.hidden = p.dataset.panel !== 'doku');
-        // Vorbefüllen
-        const f = document.getElementById('formDoku');
-        f.reset();
-        const set = (n, v) => { const el = f.querySelector(`[name="${n}"]`); if(el) el.value = v == null ? '' : v; };
-        set('klient', o.patient);
-        set('datum', o.datum);
-        set('uhrzeit', o.uhrzeit);
-        set('dauer', o.dauer || 45);
-        set('therapeut', o.therapeut);
-        if(o.leistung && o.leistung.toLowerCase().includes('lrs')) set('schwerpunkt', 'LRS');
-        else if(o.leistung && o.leistung.toLowerCase().includes('dyskalkulie')) set('schwerpunkt', 'DYS');
-        // Klient-Auswahl auslösen -> Auto-Fill für gebKlasse und Sitzungsnummer
-        const klientEl = f.querySelector('[name=klient]');
-        if(klientEl) klientEl.dispatchEvent(new Event('change'));
-        f.scrollIntoView({behavior:'smooth', block:'start'});
-        toast('Stundendokumentation vorbefüllt');
+        prefillDokuFromEinheit(o);
       }
     }, 200);
   }
 });
+
+/* Übernahme der Termin-Daten ins Doku-Formular (wiederverwendbar:
+   nach Speichern + nachträglich per Button in der Einheiten-Tabelle). */
+function prefillDokuFromEinheit(o){
+  if(!o) return;
+  // Wechsel zum Doku-Tab
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'doku'));
+  document.querySelectorAll('section[data-panel]').forEach(p => p.hidden = p.dataset.panel !== 'doku');
+  const f = document.getElementById('formDoku');
+  f.reset();
+  const set = (n, v) => { const el = f.querySelector(`[name="${n}"]`); if(el) el.value = v == null ? '' : v; };
+  set('klient', o.patient);
+  set('datum', o.datum);
+  set('uhrzeit', o.uhrzeit);
+  set('dauer', o.dauer || 45);
+  set('therapeut', o.therapeut);
+  if(o.leistung && o.leistung.toLowerCase().includes('lrs')) set('schwerpunkt', 'LRS');
+  else if(o.leistung && o.leistung.toLowerCase().includes('dyskalkulie')) set('schwerpunkt', 'DYS');
+  // Klient-Auswahl auslösen -> Auto-Fill für gebKlasse und Sitzungsnummer
+  const klientEl = f.querySelector('[name=klient]');
+  if(klientEl) klientEl.dispatchEvent(new Event('change'));
+  f.scrollIntoView({behavior:'smooth', block:'start'});
+  toast('Stundendokumentation vorbefüllt');
+}
 
 document.getElementById('einheitCancelEdit').addEventListener('click', ()=>{
   formE.querySelector('[name=id]').value = '';
@@ -1316,7 +1351,9 @@ function renderEinheiten(){
         const k = d.klient.toLowerCase(), p = e.patient.toLowerCase();
         return k === p || p.includes(k.split(',')[0].trim()) || k.includes(p.split(',')[0].trim());
       });
-      const dokuPill = hasDoku ? '<span class="pill ok" title="Stundendoku vorhanden">✓ Doku</span>' : '<span class="pill" title="Noch keine Stundendokumentation" style="opacity:.6">○ Doku</span>';
+      const dokuPill = hasDoku
+        ? '<span class="pill ok" title="Stundendoku vorhanden">✓ Doku</span>'
+        : `<button class="btn small ghost" data-doku-from-einheit="${e.id}" title="Stundendokumentation aus diesem Termin anlegen" style="padding:4px 10px;font-size:12px">+ Doku anlegen</button>`;
       tr.innerHTML = `
         <td>${e.datum||''} <span style="color:var(--muted);font-size:12px">${e.wochentag||''} · ${e.uhrzeit||''}</span></td>
         <td data-label="Wochentag">${e.wochentag||''}</td>
@@ -1337,6 +1374,13 @@ function renderEinheiten(){
   document.getElementById('einheitenCount').textContent = `${visible.length} sichtbar / ${state.einheiten.length} gesamt`;
 }
 document.querySelector('#einheitenTable').addEventListener('click', e=>{
+  // Nachträgliche Übernahme Termin -> Stundendoku
+  const dokuId = e.target.dataset.dokuFromEinheit;
+  if(dokuId){
+    const ein = state.einheiten.find(x => x.id === dokuId);
+    if(ein) prefillDokuFromEinheit(ein);
+    return;
+  }
   const editId = e.target.dataset.editEinheit;
   if(editId){
     const ein = state.einheiten.find(x => x.id === editId); if(!ein) return;
@@ -1492,6 +1536,8 @@ document.getElementById('dokuCancelEdit').addEventListener('click', ()=>{
 });
 
 function renderDokus(){
+  // Klient:in-Dropdown des Verlaufsbericht-Bereichs aktuell halten
+  refreshVerlaufsberichtKlientList();
   const tb = document.querySelector('#dokuTable tbody'); tb.innerHTML='';
   if(!state.dokus.length){
     tb.innerHTML = '<tr><td colspan="7" class="empty">Noch keine Dokumentation erfasst.</td></tr>'; return;
@@ -1537,6 +1583,202 @@ function renderDokus(){
     tb.appendChild(tr);
   });
 }
+/* ============================================================
+   Verlaufsbericht: mehrere Stundendokumentationen einer Klient:in
+   zu einem zusammenhängenden Bericht zusammenführen.
+   ============================================================ */
+function refreshVerlaufsberichtKlientList(){
+  const sel = document.getElementById('vbKlient'); if(!sel) return;
+  const klienten = [...new Set(state.dokus.map(d=>d.klient).filter(Boolean))].sort();
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— bitte wählen —</option>'
+    + klienten.map(k=>`<option ${k===cur?'selected':''}>${k}</option>`).join('');
+}
+
+function buildVerlaufsbericht(){
+  const klient = document.getElementById('vbKlient').value;
+  const von = document.getElementById('vbVon').value;
+  const bis = document.getElementById('vbBis').value;
+  const detail = document.getElementById('vbDetail').value;
+  if(!klient){ toast('Bitte Klient:in wählen.'); return; }
+
+  // Dokus filtern: Klient + Zeitraum
+  const dokus = state.dokus
+    .filter(d => d.klient === klient)
+    .filter(d => {
+      if(von && (d.datum||'') < von) return false;
+      if(bis && (d.datum||'') > bis) return false;
+      return true;
+    })
+    .sort((a,b)=> (a.datum||'').localeCompare(b.datum||''));
+
+  if(!dokus.length){ toast('Keine Dokumentationen in diesem Zeitraum.'); return; }
+
+  const fmtDe = (iso)=>{
+    if(!iso) return '';
+    const [y,m,d] = iso.split('-');
+    return d&&m&&y ? `${d}.${m}.${y}` : iso;
+  };
+
+  // Therapeut:innen und Schwerpunkte sammeln
+  const therapeuten = [...new Set(dokus.map(d=>d.therapeut).filter(Boolean))];
+  const schwerpunkte = [...new Set(dokus.map(d=>d.schwerpunkt).filter(Boolean))];
+  const vonDatum = dokus[0].datum;
+  const bisDatum = dokus[dokus.length-1].datum;
+
+  // Stammdaten zum Klient holen (für Geb.-Datum, Diagnose, etc.)
+  const stamm = state.stammdaten.find(s => `${s.k_nachname||''}, ${s.k_vorname||''}` === klient);
+
+  // Materialien & Schwerpunkte über alle Sitzungen aggregieren (für "Maßnahmen-Übersicht")
+  const matKeys = {
+    mat_anschauung:'Anschauungs-/Manipulationsmaterial',
+    mat_karten:'Karten / Bildmaterial',
+    mat_schreib:'Schreib- / Lesematerial',
+    mat_spiel:'Spielerische Übungen',
+    mat_bewegung:'Bewegung / Sensomotorik',
+    mat_digital:'Digitale Medien',
+  };
+  const spKeys = {
+    sp_senso:'Sensomotorik',
+    sp_sprache:'Sprache',
+    sp_psyche:'Psyche / Verhalten',
+    sp_fach:'Fachlich (Schrift/Rechnen)',
+    sp_eltern:'Elternberatung',
+    sp_lehrer:'Lehrkraft-Beratung',
+  };
+  const matCount = {}, spCount = {};
+  dokus.forEach(d=>{
+    Object.keys(matKeys).forEach(k=>{ if(d[k]) matCount[k] = (matCount[k]||0)+1; });
+    Object.keys(spKeys).forEach(k=>{ if(d[k]) spCount[k] = (spCount[k]||0)+1; });
+  });
+  const matSummary = Object.entries(matCount)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,n])=>`<li>${matKeys[k]} <span style="color:#7A6D6D">(${n}×)</span></li>`).join('');
+  const spSummary = Object.entries(spCount)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,n])=>`<li>${spKeys[k]} <span style="color:#7A6D6D">(${n}×)</span></li>`).join('');
+
+  // Sitzungen rendern
+  const sitzungen = dokus.map(d=>{
+    let inhalt = '';
+    if(detail === 'kurz'){
+      inhalt = `
+        ${d.stundenziel ? `<p><strong>Stundenziel:</strong> ${escapeHtml(d.stundenziel)}</p>`:''}
+        ${d.vereinbarungen ? `<p><strong>Vereinbarungen:</strong> ${escapeHtml(d.vereinbarungen)}</p>`:''}
+      `;
+    } else if(detail === 'standard'){
+      inhalt = `
+        ${d.tagesform ? `<p><strong>Tagesform:</strong> ${escapeHtml(d.tagesform)}</p>`:''}
+        ${d.stundenziel ? `<p><strong>Stundenziel:</strong> ${escapeHtml(d.stundenziel)}</p>`:''}
+        ${d.ha ? `<p><strong>HA Vorstunde:</strong> ${escapeHtml(d.ha)}${d.ha_notiz?' – '+escapeHtml(d.ha_notiz):''}</p>`:''}
+        ${d.b_eltern && d.b_eltern!=='heute kein Kontakt' ? `<p><strong>Beratung Eltern:</strong> ${escapeHtml(d.b_eltern)}</p>`:''}
+        ${d.b_lehrer && d.b_lehrer!=='heute kein Kontakt' ? `<p><strong>Beratung Lehrkraft:</strong> ${escapeHtml(d.b_lehrer)}</p>`:''}
+        ${d.vereinbarungen ? `<p><strong>Vereinbarungen:</strong> ${escapeHtml(d.vereinbarungen)}</p>`:''}
+      `;
+    } else { // voll
+      const obsFields = Object.keys(d).filter(k => k.startsWith('obs_') && d[k]);
+      const obsTxt = obsFields.length
+        ? `<p><strong>Beobachtungen:</strong></p><ul>${obsFields.map(k => `<li>${escapeHtml(k.replace('obs_','').replaceAll('_',' '))}: ${escapeHtml(d[k])}</li>`).join('')}</ul>`
+        : '';
+      inhalt = `
+        ${d.tagesform ? `<p><strong>Tagesform:</strong> ${escapeHtml(d.tagesform)}</p>`:''}
+        ${d.stundenziel ? `<p><strong>Stundenziel:</strong> ${escapeHtml(d.stundenziel)}</p>`:''}
+        ${d.ha ? `<p><strong>HA Vorstunde:</strong> ${escapeHtml(d.ha)}${d.ha_notiz?' – '+escapeHtml(d.ha_notiz):''}</p>`:''}
+        ${obsTxt}
+        ${d.b_eltern && d.b_eltern!=='heute kein Kontakt' ? `<p><strong>Beratung Eltern:</strong> ${escapeHtml(d.b_eltern)}</p>`:''}
+        ${d.b_lehrer && d.b_lehrer!=='heute kein Kontakt' ? `<p><strong>Beratung Lehrkraft:</strong> ${escapeHtml(d.b_lehrer)}</p>`:''}
+        ${d.vereinbarungen ? `<p><strong>Vereinbarungen:</strong> ${escapeHtml(d.vereinbarungen)}</p>`:''}
+        ${d.mat_sonstiges ? `<p><strong>Sonst. Material:</strong> ${escapeHtml(d.mat_sonstiges)}</p>`:''}
+      `;
+    }
+    return `
+      <div class="sitzung">
+        <div class="sitzung-head">
+          <strong>${fmtDe(d.datum)}</strong>
+          ${d.uhrzeit?` &middot; ${escapeHtml(d.uhrzeit)}`:''}
+          &middot; Sitzung ${d.sitzungNr||'?'} &middot; ${escapeHtml(d.therapeut||'')}
+          &middot; <span class="pill">${escapeHtml(d.schwerpunkt||'')}</span>
+        </div>
+        <div class="sitzung-body">${inhalt || '<p style="color:#7A6D6D"><em>(keine Felder ausgefüllt)</em></p>'}</div>
+      </div>`;
+  }).join('');
+
+  const win = window.open('', '_blank', 'width=900,height=1000');
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Verlaufsbericht ${escapeHtml(klient)}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#2D2429;line-height:1.45}
+      h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px;margin-top:0}
+      h2{color:#6F2A2F;margin:18px 0 6px;font-size:16px;border-bottom:1px solid #E5DCDE;padding-bottom:4px}
+      h3{color:#6F2A2F;margin:14px 0 4px;font-size:14px}
+      .meta{color:#7A6D6D;font-size:12px;margin-bottom:14px}
+      .info-box{background:#F8F2F3;border-left:4px solid #9E4047;padding:10px 14px;margin:10px 0;border-radius:4px}
+      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+      .grid2 ul{margin:6px 0 0 0;padding-left:18px}
+      .sitzung{margin:12px 0;padding:10px 14px;border:1px solid #E5DCDE;border-radius:6px;page-break-inside:avoid;background:#fff}
+      .sitzung-head{font-size:13px;color:#6F2A2F;border-bottom:1px solid #F0E4E6;padding-bottom:4px;margin-bottom:6px}
+      .sitzung-body p{margin:4px 0;font-size:13px}
+      .sitzung-body ul{margin:4px 0 4px 18px;font-size:12px}
+      .pill{display:inline-block;padding:2px 8px;border-radius:10px;background:#F0E4E6;color:#6F2A2F;font-size:11px}
+      .legend{font-size:11px;color:#7A6D6D;margin-top:14px;border-top:1px solid #E5DCDE;padding-top:8px}
+      @media print{ button{display:none} body{margin:10mm} }
+      @page { size: A4; margin: 12mm }
+    </style></head><body>
+    <button onclick="window.print()" style="float:right;padding:8px 14px;background:#9E4047;color:white;border:0;border-radius:6px;cursor:pointer">🖨 Drucken / als PDF</button>
+    <h1>Verlaufsbericht – ${escapeHtml(klient)}</h1>
+    <div class="meta">
+      Institut Lernen &middot; Erstellt: ${new Date().toLocaleString('de-DE')}
+    </div>
+
+    <div class="info-box">
+      <strong>Zeitraum:</strong> ${fmtDe(vonDatum)} – ${fmtDe(bisDatum)} &nbsp;·&nbsp;
+      <strong>Sitzungen:</strong> ${dokus.length} &nbsp;·&nbsp;
+      <strong>Förderschwerpunkt(e):</strong> ${schwerpunkte.join(', ')||'—'} &nbsp;·&nbsp;
+      <strong>Therapeut:in(nen):</strong> ${therapeuten.join(', ')||'—'}
+      ${stamm && stamm.geburtsdatum ? `<br><strong>Geburtsdatum:</strong> ${fmtDe(stamm.geburtsdatum)}`:''}
+      ${stamm && stamm.diagnose ? ` &nbsp;·&nbsp; <strong>Diagnose:</strong> ${escapeHtml(stamm.diagnose)}`:''}
+      ${stamm && stamm.az ? ` &nbsp;·&nbsp; <strong>Aktenzeichen:</strong> ${escapeHtml(stamm.az)}`:''}
+    </div>
+
+    <h2>Maßnahmen-Übersicht</h2>
+    <div class="grid2">
+      <div>
+        <h3>Schwerpunkte über alle Sitzungen</h3>
+        ${spSummary ? `<ul>${spSummary}</ul>` : '<p style="color:#7A6D6D"><em>keine Schwerpunkte erfasst</em></p>'}
+      </div>
+      <div>
+        <h3>Eingesetzte Materialien &amp; Methoden</h3>
+        ${matSummary ? `<ul>${matSummary}</ul>` : '<p style="color:#7A6D6D"><em>keine Materialien erfasst</em></p>'}
+      </div>
+    </div>
+
+    <h2>Sitzungsverlauf (chronologisch)</h2>
+    ${sitzungen}
+
+    <div class="legend">
+      Bericht generiert aus ${dokus.length} Stundendokumentation${dokus.length===1?'':'en'} ·
+      Detail-Tiefe: ${detail} · Pseudonymisierte Daten gemäß Datenschutzkonzept Institut Lernen.
+    </div>
+    </body></html>`);
+  win.document.close();
+  document.getElementById('vbInfo').textContent =
+    `${dokus.length} Sitzungen zusammengeführt (${fmtDe(vonDatum)} – ${fmtDe(bisDatum)}).`;
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+document.getElementById('btnVbErstellen').addEventListener('click', buildVerlaufsbericht);
+document.getElementById('btnVbReset').addEventListener('click', ()=>{
+  document.getElementById('vbKlient').value = '';
+  document.getElementById('vbVon').value = '';
+  document.getElementById('vbBis').value = '';
+  document.getElementById('vbDetail').value = 'standard';
+  document.getElementById('vbInfo').textContent = '';
+});
+
 /* Helfer: passenden WJH-Eintrag zu einem Stammdatensatz finden (Match per AZ, dann Name) */
 function findMatchingWJH(stamm){
   if(!stamm) return null;
@@ -3722,7 +3964,60 @@ document.getElementById('btnBackup').addEventListener('click', ()=>{
   a.href = URL.createObjectURL(blob);
   a.download = 'praxisorg_backup_'+new Date().toISOString().slice(0,10)+'.json';
   a.click();
+  // Zeitstempel speichern und Banner aktualisieren
+  localStorage.setItem('praxisorg_last_backup', new Date().toISOString());
+  renderBackupBanner();
+  toast('Backup gespeichert ✓');
 });
+
+/* ---- Backup-Erinnerungs-Banner ----
+   Warnt, wenn das letzte Backup-JSON länger als 7 Tage zurückliegt
+   (oder noch nie eines erstellt wurde). */
+function renderBackupBanner(){
+  const box = document.getElementById('backupBanner'); if(!box) return;
+  const last = localStorage.getItem('praxisorg_last_backup');
+  let tage = null;
+  if(last){
+    const diff = (Date.now() - new Date(last).getTime()) / (1000*60*60*24);
+    tage = Math.floor(diff);
+  }
+  // Banner-Logik: nichts anzeigen, wenn < 7 Tage und ein Backup existiert
+  if(last && tage < 7){ box.style.display='none'; box.innerHTML=''; return; }
+  // Dismiss-Status (gilt 24 h)
+  const dismiss = localStorage.getItem('praxisorg_backup_banner_dismissed');
+  if(dismiss){
+    const diffH = (Date.now() - new Date(dismiss).getTime()) / (1000*60*60);
+    if(diffH < 24){ box.style.display='none'; return; }
+  }
+  const text = !last
+    ? 'Noch kein Backup erstellt. Bitte heute ein Backup-JSON sichern, damit deine Daten geschützt sind.'
+    : `Letztes Backup vor ${tage} Tagen. Bitte heute ein neues Backup-JSON sichern.`;
+  const cls = !last || tage >= 14 ? 'bad' : 'warn';
+  const bg = cls === 'bad' ? '#fde7ea' : '#fef9e7';
+  const bd = cls === 'bad' ? 'var(--primary)' : 'var(--warn)';
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="card" style="border-left:4px solid ${bd};background:${bg};display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <strong style="color:${bd}">⚠ Backup-Erinnerung</strong><br>
+        <span style="font-size:14px">${text}</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn small" id="backupBannerGo">Jetzt sichern</button>
+        <button class="btn ghost small" id="backupBannerDismiss">Später</button>
+      </div>
+    </div>`;
+  document.getElementById('backupBannerGo').onclick = ()=>{
+    // Zum Excel-Export-Tab springen und Backup auslösen
+    document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='export'));
+    document.querySelectorAll('section[data-panel]').forEach(s=>s.classList.toggle('active', s.dataset.panel==='export'));
+    document.getElementById('btnBackup').click();
+  };
+  document.getElementById('backupBannerDismiss').onclick = ()=>{
+    localStorage.setItem('praxisorg_backup_banner_dismissed', new Date().toISOString());
+    renderBackupBanner();
+  };
+}
 document.getElementById('restoreFile').addEventListener('change', e=>{
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
@@ -3830,6 +4125,7 @@ function renderAll(){
   document.getElementById('role').value = state.user.role;
   document.getElementById('userName').value = state.user.name;
   applyRoleTabVisibility();
+  renderBackupBanner();
 }
 
 rebuildObs();

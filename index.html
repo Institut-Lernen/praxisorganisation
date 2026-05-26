@@ -33,10 +33,11 @@
   header .who label{color:var(--muted) !important}
   header select,header input{background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px}
   header select option{color:var(--ink)}
-  nav.tabs{display:flex;gap:2px;background:#fff;border-bottom:1px solid var(--border);padding:0 8px;overflow-x:auto}
+  nav.tabs{display:flex;flex-wrap:wrap;gap:2px 4px;background:#fff;border-bottom:1px solid var(--border);padding:0 8px}
   nav.tabs button{background:transparent;border:0;padding:12px 14px;font-size:14px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
   nav.tabs button.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
   nav.tabs button:hover{color:var(--ink)}
+  nav.tabs .tabs-break{flex-basis:100%;height:0;margin:0;padding:0;border:0}
   main{max-width:1200px;margin:16px auto;padding:0 16px 60px}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
   .card h2{margin:0 0 4px;font-size:18px}
@@ -58,9 +59,9 @@
     header .who label{font-size:11px;margin:0}
     header .who select,header .who input{flex:1;min-width:0;font-size:15px}
 
-    /* Tabs: scroll-snap und größere Touch-Targets */
-    nav.tabs{scroll-snap-type:x mandatory;padding:0 4px;-webkit-overflow-scrolling:touch}
-    nav.tabs button{scroll-snap-align:start;padding:14px 14px;font-size:13px;flex-shrink:0}
+    /* Tabs: zweizeiliger Umbruch, größere Touch-Targets */
+    nav.tabs{padding:0 4px;justify-content:center}
+    nav.tabs button{padding:12px 10px;font-size:13px;flex:1 1 calc(50% - 6px);min-width:0;text-align:center;white-space:normal;line-height:1.2}
 
     /* Inputs/Buttons größer (verhindert iOS-Zoom durch font-size 16px) */
     input,select,textarea{font-size:16px;min-height:44px;padding:10px 12px}
@@ -268,13 +269,16 @@
 </header>
 
 <nav class="tabs" id="tabs">
+  <!-- Reihe 1: Tagesgeschäft -->
   <button data-tab="erfassen" class="active">Therapieeinheit erfassen</button>
   <button data-tab="doku">Stundendokumentation</button>
+  <button data-tab="uebersicht">Wochenübersicht</button>
   <button data-tab="stammdaten">Stammdaten</button>
+  <div class="tabs-break" aria-hidden="true"></div>
+  <!-- Reihe 2: Verwaltung & Abrechnung -->
   <button data-tab="warteliste">Warteliste &amp; Erstkontakt</button>
   <button data-tab="wjh">Wirtschaftliche Jugendhilfe</button>
   <button data-tab="abrechnung">Abrechnung</button>
-  <button data-tab="uebersicht">Wochenübersicht</button>
   <button data-tab="export">Excel-Export</button>
 </nav>
 

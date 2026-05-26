@@ -196,6 +196,20 @@
   .danger-zone{border:1px dashed var(--bad);background:#fffafa;padding:12px;border-radius:8px}
   .info{background:#fef9e7;border-left:3px solid var(--warn);padding:10px 14px;font-size:13px;border-radius:0 6px 6px 0;margin-bottom:14px}
 
+  /* Pflichtfeld-Hervorhebung: required-Felder ohne Inhalt bekommen einen kräftigen roten Rahmen */
+  input:required:placeholder-shown,
+  select:required:invalid,
+  textarea:required:placeholder-shown{
+    border:2px solid #d04555;
+    background:#fff5f6;
+  }
+  input:required:not(:placeholder-shown){
+    border:1px solid var(--border);
+    background:#fff;
+  }
+  /* Label-Hinweis bei Pflicht */
+  label .pflicht-marker{color:#d04555;font-weight:700;margin-left:4px}
+
   /* Modal für Doku-Detailansicht */
   .modal-overlay{position:fixed;inset:0;background:rgba(38,24,26,.6);z-index:100;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
   .modal-overlay.show{display:flex}
@@ -220,14 +234,20 @@
 
   /* Druck-spezifisches Styling */
   @media print{
-    body * { visibility:hidden }
-    #dokuModal, #dokuModal * { visibility:visible }
-    #dokuModal{position:absolute;left:0;top:0;width:100%;background:white;padding:0}
-    .modal-overlay{background:white;padding:0;display:block}
-    .modal{box-shadow:none;max-width:100%}
-    .modal-foot{display:none}
-    .modal-head{background:white;border-bottom:2px solid var(--primary)}
-    .doku-section{page-break-inside:avoid}
+    @page { margin: 1.5cm; }
+    body { background:white !important; }
+    body > *:not(#dokuModal) { display:none !important; }
+    #dokuModal { display:block !important; position:static !important; background:white !important; padding:0 !important; overflow:visible !important; }
+    #dokuModal.modal-overlay { display:block !important; background:white !important; }
+    .modal { box-shadow:none !important; max-width:100% !important; border:none !important; }
+    .modal-head { background:white !important; border-bottom:2px solid #9E4047 !important; padding:0 0 10px 0 !important; }
+    .modal-body { max-height:none !important; overflow:visible !important; padding:10px 0 !important; }
+    .modal-foot { display:none !important; }
+    .doku-section { page-break-inside:avoid; }
+    .obs-print-table { page-break-inside:avoid; }
+    .obs-print-table th { background:#F8F2F3 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .obs-print-table tr.has-fb td { background:#fffbeb !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .obs-print-table tr.has-dfb td { background:#fbe5e8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   }
 </style>
 </head>
@@ -477,6 +497,26 @@
         <input name="kostenzusage" placeholder="z. B. Privat / JA bis 31.12.2026, 40 Std">
       </div>
 
+        </div>
+      </details>
+
+      <details class="stamm-section" style="grid-column:1/-1">
+        <summary>🎯 Förderziele</summary>
+        <div class="grid grid-2" style="padding:10px 4px">
+          <div style="grid-column:1/-1" class="check-grid">
+            <label><input type="checkbox" name="foerder_lrs"> Lerntherapie LRS</label>
+            <label><input type="checkbox" name="foerder_dyskalkulie"> Lerntherapie Dyskalkulie</label>
+            <label><input type="checkbox" name="foerder_lernen_lernen"> Lernen lernen</label>
+            <label><input type="checkbox" name="foerder_konzentration"> Konzentration</label>
+            <label><input type="checkbox" name="foerder_handlungsplanung"> Handlungsplanung</label>
+            <label><input type="checkbox" name="foerder_sprache"> Sprache</label>
+            <label><input type="checkbox" name="foerder_sensomotorik"> Sensomotorik</label>
+            <label><input type="checkbox" name="foerder_psyche"> Psyche / Verhalten</label>
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Notizen zu Förderzielen</label>
+            <textarea name="foerder_notiz" rows="2" placeholder="individuelle Schwerpunkte, Besonderheiten ..."></textarea>
+          </div>
         </div>
       </details>
 
@@ -900,6 +940,7 @@
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" data-export="abr-ja">⤓ Excel: Jugendamt-Sammelaufstellung</button>
       <button class="btn ghost" data-export="abr-ja-detail">⤓ Excel: Jugendamt-Einzelpositionen (jede Einheit)</button>
+      <button class="btn ghost" id="btnAbrJaPdf">🖨 PDF-Druck: nur AZ, Name, Stunden</button>
     </div>
   </div>
 
@@ -1204,17 +1245,46 @@ formE.addEventListener('submit', e=>{
   e.preventDefault();
   const o = dataFromForm(formE);
   o.therapeut = o.therapeut || state.user.name;
+  let neuId = null;
   if(o.id){
     state.einheiten = state.einheiten.map(x => x.id===o.id ? Object.assign({}, x, o) : x);
     toast('Einheit aktualisiert');
   } else {
     o.id = uid();
+    neuId = o.id;
     state.einheiten.unshift(o);
     toast('Einheit gespeichert');
   }
   save(); renderEinheiten();
   formE.reset();
   formE.querySelector('[name=id]').value = '';
+
+  // Bei neuer durchgeführter/geplanter Einheit: Frage, ob direkt zur Stundendoku
+  if(neuId && (o.status === 'Durchgeführt' || o.status === 'Geplant') && o.patient && o.datum){
+    setTimeout(() => {
+      if(confirm(`Termin gespeichert: ${o.patient} am ${o.datum}.\n\nGleich Stundendokumentation anlegen?`)){
+        // Wechsel zum Doku-Tab
+        document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'doku'));
+        document.querySelectorAll('section[data-panel]').forEach(p => p.hidden = p.dataset.panel !== 'doku');
+        // Vorbefüllen
+        const f = document.getElementById('formDoku');
+        f.reset();
+        const set = (n, v) => { const el = f.querySelector(`[name="${n}"]`); if(el) el.value = v == null ? '' : v; };
+        set('klient', o.patient);
+        set('datum', o.datum);
+        set('uhrzeit', o.uhrzeit);
+        set('dauer', o.dauer || 45);
+        set('therapeut', o.therapeut);
+        if(o.leistung && o.leistung.toLowerCase().includes('lrs')) set('schwerpunkt', 'LRS');
+        else if(o.leistung && o.leistung.toLowerCase().includes('dyskalkulie')) set('schwerpunkt', 'DYS');
+        // Klient-Auswahl auslösen -> Auto-Fill für gebKlasse und Sitzungsnummer
+        const klientEl = f.querySelector('[name=klient]');
+        if(klientEl) klientEl.dispatchEvent(new Event('change'));
+        f.scrollIntoView({behavior:'smooth', block:'start'});
+        toast('Stundendokumentation vorbefüllt');
+      }
+    }, 200);
+  }
 });
 
 document.getElementById('einheitCancelEdit').addEventListener('click', ()=>{
@@ -2302,6 +2372,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if(gebKlasseFeld && !gebKlasseFeld.value) gebKlasseFeld.value = stamm.k_gebKlasse || '';
         const therFeld = document.querySelector('#formDoku [name=therapeut]');
         if(therFeld && !therFeld.value) therFeld.value = stamm.therapeutin || '';
+        // Sitzungsnummer aus letzter Doku des Klienten +1 vorschlagen
+        const sitzungFeld = document.querySelector('#formDoku [name=sitzungNr]');
+        if(sitzungFeld && !sitzungFeld.value){
+          const klientLow = klientFeld.value.toLowerCase().trim();
+          const lastSitzung = state.dokus
+            .filter(d => (d.klient||'').toLowerCase().trim() === klientLow)
+            .map(d => parseInt(d.sitzungNr) || 0)
+            .reduce((max, n) => Math.max(max, n), 0);
+          sitzungFeld.value = lastSitzung + 1;
+        }
       }
     });
   }
@@ -2508,6 +2588,7 @@ function renderWJH(){
       `<td><strong>${verbraucht.toFixed(1)}</strong></td>
        <td>${rest !== null ? '<span class="pill '+restCls+'">'+rest.toFixed(1)+'</span>' : '<span class="legend">–</span>'}</td>
        <td>
+         <button class="btn small" data-view-w="${w.id}" title="Akte anzeigen">Anzeigen</button>
          <button class="btn small ghost" data-edit-w="${w.id}">Bearbeiten</button>
          <button class="btn small ghost" data-del-w="${w.id}">Löschen</button>
        </td>`;
@@ -2515,6 +2596,27 @@ function renderWJH(){
   });
 }
 document.querySelector('#wjhTable').addEventListener('click', e=>{
+  const viewId = e.target.dataset.viewW;
+  if(viewId){
+    const w = state.wjh.find(x => x.id === viewId); if(!w) return;
+    const stamm = findMatchingStamm(w);
+    const bewilligt = berechneBewilligteEinheiten(w.bewilligung_von, w.bewilligung_bis, w.stunden_pro_woche);
+    const m = monthlyHoursForName(w.name||'');
+    const verbraucht = m.reduce((a,b)=>a+b, 0);
+    const rest = bewilligt !== null ? Math.max(0, bewilligt - verbraucht) : null;
+    let msg = `WJH-Akte: ${w.name||'?'}\n\n`;
+    msg += `Aktenzeichen: ${w.az||'—'}\n`;
+    msg += `Bewilligung: ${w.bewilligung_von||'—'} bis ${w.bewilligung_bis||'—'}\n`;
+    msg += `Therapieeinheiten/Woche: ${w.stunden_pro_woche||'—'}\n`;
+    msg += `Bewilligt gesamt: ${bewilligt!==null ? bewilligt + ' TE' : '—'}\n`;
+    msg += `Verbraucht: ${verbraucht.toFixed(1)} TE\n`;
+    msg += `Verbleibend: ${rest!==null ? rest.toFixed(1) + ' TE' : '—'}\n\n`;
+    msg += `Genehmigung: ${w.genehmigung||'—'}\n\n`;
+    if(stamm) msg += `✓ Stammdatensatz verknüpft: ${stamm.k_nachname||''}, ${stamm.k_vorname||''}`;
+    else msg += `✗ Kein verknüpfter Stammdatensatz`;
+    alert(msg);
+    return;
+  }
   const editId = e.target.dataset.editW;
   const delId = e.target.dataset.delW;
   if(editId){
@@ -2677,6 +2779,43 @@ function renderAbrechnung(){
 }
 
 document.getElementById('abrMonth').addEventListener('change', renderAbrechnung);
+
+// Einfacher Druck/PDF für Jugendamt-Abrechnung (nur AZ, Name, Stunden)
+document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
+  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+  const klienten = state.stammdaten.filter(canSeeStamm).filter(isJugendamtKlient);
+  let rows = '';
+  let sumStd = 0;
+  klienten.forEach(s => {
+    const ein = einheitenInMonat(s, ym);
+    if(!ein.length) return;
+    const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
+    sumStd += std;
+    rows += `<tr><td>${s.az||''}</td><td>${s.k_nachname||''}, ${s.k_vorname||''}</td><td style="text-align:right">${std}</td></tr>`;
+  });
+  const win = window.open('', '_blank', 'width=800,height=900');
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Jugendamt-Abrechnung ${ym}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#2D2429}
+      h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px}
+      table{width:100%;border-collapse:collapse;margin-top:20px}
+      th,td{padding:8px 10px;border-bottom:1px solid #E5DCDE;text-align:left}
+      th{background:#F8F2F3;color:#6F2A2F;text-transform:uppercase;font-size:12px}
+      tfoot td{font-weight:bold;border-top:2px solid #9E4047}
+      .meta{color:#7A6D6D;font-size:12px;margin-bottom:14px}
+      @media print{ button{display:none} }
+    </style></head><body>
+    <button onclick="window.print()" style="float:right;padding:8px 14px;background:#9E4047;color:white;border:0;border-radius:6px;cursor:pointer">🖨 Drucken / als PDF</button>
+    <h1>Jugendamt-Abrechnung ${ym}</h1>
+    <div class="meta">Institut Lernen · Erstellt: ${new Date().toLocaleString('de-DE')}</div>
+    <table>
+      <thead><tr><th>Aktenzeichen</th><th>Klient:in</th><th style="text-align:right">Therapieeinheiten</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="2">Gesamt</td><td style="text-align:right">${sumStd}</td></tr></tfoot>
+    </table>
+    </body></html>`);
+  win.document.close();
+});
 document.querySelector('#abrPrivTable').addEventListener('click', e=>{
   const id = e.target.dataset.togglePay;
   if(!id) return;
@@ -2992,9 +3131,7 @@ function buildLTSheet(weekday, includeTherapeutCol, filterTherRolle){
   ];
   const items = state.einheiten.filter(e=>{
     if(e.wochentag !== weekday) return false;
-    // Privat-Klient:innen filtern (Jugendamt gehört in die WJH-Datei)
-    if(klientVertragKategorie(e.patient) === 'jugendamt') return false;
-    // Optional: nach Therapeut:in-Rolle filtern
+    // Alle Klient:innen (Privat + Jugendamt), aber nach Therapeut:innen-Rolle filtern
     if(filterTherRolle && therapeutRolle(e.therapeut) !== filterTherRolle) return false;
     return true;
   });

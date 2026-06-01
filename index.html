@@ -4631,6 +4631,99 @@ function renderBackupBanner(){
     renderBackupBanner();
   };
 }
+/* Backup-Importmodus erfragen.
+   Rückgabe: 'merge' | 'update' | 'replace' | null (= Abbruch) */
+function askImportMode(){
+  const eingabe = prompt(
+    'Wie sollen die Daten aus dem Backup geladen werden?\n\n'
+    + '1 = Zusammenführen (Standard) — neue Einträge werden ergänzt,\n'
+    + '    bereits vorhandene bleiben unverändert.\n\n'
+    + '2 = Aktualisieren — bei gleicher ID gewinnt die Backup-Version.\n'
+    + '    Neue Einträge werden ergänzt.\n\n'
+    + '3 = Komplett ersetzen — alle aktuellen Daten werden VERWORFEN\n'
+    + '    und durch das Backup ersetzt.\n\n'
+    + 'Bitte 1, 2 oder 3 eingeben:',
+    '1'
+  );
+  if(eingabe === null) return null;
+  if(eingabe.trim() === '1') return 'merge';
+  if(eingabe.trim() === '2') return 'update';
+  if(eingabe.trim() === '3') return 'replace';
+  toast('Ungültige Eingabe – bitte 1, 2 oder 3.');
+  return null;
+}
+
+/* Smart-Merge zweier State-Objekte.
+   - mode 'merge'  : Vorhandene Einträge (gleiche ID) bleiben unverändert
+   - mode 'update' : Backup-Version überschreibt bei gleicher ID
+   - mode 'replace': aufrufer ersetzt direkt, nicht über diese Funktion. */
+function mergeStates(current, backup, mode){
+  const out = Object.assign({}, current);
+  const arrays = ['einheiten','dokus','stammdaten','wjh','erstkontakte','therapeuten','freieplaetze'];
+  const stats = {};
+  arrays.forEach(key => {
+    if(!Array.isArray(backup[key])) return;
+    if(!Array.isArray(out[key])) out[key] = [];
+    const byId = new Map();
+    out[key].forEach(item => { if(item && item.id) byId.set(item.id, item); });
+    let added = 0, updated = 0, kept = 0;
+    backup[key].forEach(item => {
+      if(!item) return;
+      if(!item.id){
+        out[key].push(item); added++;
+        return;
+      }
+      const existing = byId.get(item.id);
+      if(!existing){
+        out[key].push(item); byId.set(item.id, item); added++;
+      } else if(mode === 'update'){
+        const idx = out[key].indexOf(existing);
+        if(idx >= 0) out[key][idx] = item;
+        byId.set(item.id, item); updated++;
+      } else {
+        kept++;
+      }
+    });
+    stats[key] = {added, updated, kept};
+  });
+  // Objekt-Felder (zahlungen, rollenPw) merge-bar nach Schlüssel
+  ['zahlungen','rollenPw'].forEach(key => {
+    if(backup[key] && typeof backup[key] === 'object'){
+      if(mode === 'update') out[key] = Object.assign({}, out[key]||{}, backup[key]);
+      else                  out[key] = Object.assign({}, backup[key], out[key]||{});
+    }
+  });
+  // Nutzer:in (Rolle/Name) NICHT überschreiben - bleibt wie aktuell
+  out.user = current.user;
+  return {state: out, stats};
+}
+
+function importBackupData(parsed){
+  const mode = askImportMode();
+  if(!mode) return false;
+  if(mode === 'replace'){
+    if(!confirm('Wirklich ALLE aktuellen Daten verwerfen und nur das Backup laden?\n\nDies kann nicht rückgängig gemacht werden.')) return false;
+    state = Object.assign(defaultState(), parsed);
+    state.user = state.user || (parsed.user || {role:'leitung', name:''});
+    save(); renderAll();
+    toast('Backup komplett übernommen ✓');
+    return true;
+  }
+  const {state: merged, stats} = mergeStates(state, parsed, mode);
+  state = merged;
+  save(); renderAll();
+  // Zusammenfassung anzeigen
+  const summary = Object.entries(stats).map(([k,v])=> {
+    const teile = [];
+    if(v.added) teile.push(`${v.added} neu`);
+    if(v.updated) teile.push(`${v.updated} aktualisiert`);
+    if(v.kept) teile.push(`${v.kept} unverändert`);
+    return teile.length ? `${k}: ${teile.join(', ')}` : null;
+  }).filter(Boolean).join(' · ');
+  toast(`Backup ${mode==='merge'?'zusammengeführt':'aktualisiert'} ✓ ${summary || '(keine neuen Einträge)'}`);
+  return true;
+}
+
 document.getElementById('restoreFile').addEventListener('change', e=>{
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
@@ -4646,10 +4739,7 @@ document.getElementById('restoreFile').addEventListener('change', e=>{
       try{
         const plain = await decryptBackup(raw, pw);
         const parsed = JSON.parse(plain);
-        if(!confirm('Backup entschlüsselt. Aktuelle Daten in diesem Browser werden überschrieben. Fortfahren?')) return;
-        state = Object.assign(defaultState(), parsed);
-        save(); renderAll();
-        toast('Verschlüsseltes Backup geladen ✓');
+        importBackupData(parsed);
       }catch(err){
         console.error(err);
         toast('Entschlüsselung fehlgeschlagen – falsches Passwort?');
@@ -4657,14 +4747,8 @@ document.getElementById('restoreFile').addEventListener('change', e=>{
       e.target.value = '';
       return;
     }
-
-    // Klartext-Backup (alte Variante)
-    try{
-      if(!confirm('Aktuelle Daten in diesem Browser werden überschrieben. Fortfahren?')) return;
-      state = Object.assign(defaultState(), raw);
-      save(); renderAll();
-      toast('Backup geladen');
-    }catch(_){ toast('Datei nicht lesbar'); }
+    // Klartext-Backup
+    importBackupData(raw);
     e.target.value = '';
   };
   r.readAsText(f);

@@ -146,9 +146,11 @@
     main{padding:0 4px 60px}
     .card{padding:10px}
   }
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;font-weight:500}
-  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;background:#fff}
-  textarea{min-height:70px;resize:vertical}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;font-weight:500;line-height:1.4;min-height:18px}
+  input,select,textarea{width:100%;height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;background:#fff;box-sizing:border-box}
+  textarea{min-height:70px;height:auto;resize:vertical}
+  /* gleichmäßige Höhe für alle Eingabefelder pro Zeile */
+  .grid > div{display:flex;flex-direction:column;justify-content:flex-start}
   input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0}
   button.btn{background:var(--primary);color:#fff;border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500}
   button.btn:hover{filter:brightness(1.1)}
@@ -156,6 +158,9 @@
   button.btn.danger{background:var(--bad)}
   button.btn.warn{background:var(--warn)}
   button.btn.small{padding:5px 10px;font-size:12px}
+  /* Abrechnungs-Buttons einheitlich */
+  .abr-btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .abr-btn-row .abr-action{flex:1 1 220px;min-height:44px;padding:10px 14px;font-size:14px;font-weight:500;justify-content:center}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .right{margin-left:auto}
   .muted{color:var(--muted)}
@@ -294,27 +299,8 @@
     <p class="lead">Schnellerfassung in unter 30 Sekunden. Wird als Termin in der Wochenübersicht und beim Excel-Export in <em>LT-Stunden</em> einsortiert.</p>
     <form id="formEinheit" class="grid grid-4">
       <div><label>Datum</label><input type="date" name="datum" required></div>
-      <div><label>Uhrzeit (z. B. 9:30-10:15)</label>
-        <input type="text" name="uhrzeit" list="uhrzeitList" placeholder="aus Auswahl oder eintippen" required>
-        <datalist id="uhrzeitList">
-          <option value="8:00-8:45">8:00 – 8:45 (1 UE)</option>
-          <option value="8:00-9:30">8:00 – 9:30 (2 UE)</option>
-          <option value="9:00-9:45">9:00 – 9:45 (1 UE)</option>
-          <option value="9:00-10:30">9:00 – 10:30 (2 UE)</option>
-          <option value="9:30-10:15">9:30 – 10:15 (1 UE)</option>
-          <option value="10:00-10:45">10:00 – 10:45 (1 UE)</option>
-          <option value="10:30-11:15">10:30 – 11:15 (1 UE)</option>
-          <option value="11:00-11:45">11:00 – 11:45 (1 UE)</option>
-          <option value="12:00-12:45">12:00 – 12:45 (1 UE)</option>
-          <option value="13:00-13:45">13:00 – 13:45 (1 UE)</option>
-          <option value="14:00-14:45">14:00 – 14:45 (1 UE)</option>
-          <option value="14:00-15:30">14:00 – 15:30 (2 UE)</option>
-          <option value="15:00-15:45">15:00 – 15:45 (1 UE)</option>
-          <option value="15:00-16:30">15:00 – 16:30 (2 UE)</option>
-          <option value="16:00-16:45">16:00 – 16:45 (1 UE)</option>
-          <option value="16:00-17:30">16:00 – 17:30 (2 UE)</option>
-          <option value="17:00-17:45">17:00 – 17:45 (1 UE)</option>
-        </datalist>
+      <div><label>Beginn-Uhrzeit</label>
+        <input type="time" name="uhrzeit" required>
       </div>
       <div>
         <label>Wochentag</label>
@@ -355,6 +341,14 @@
         </select>
       </div>
       <div>
+        <label>Raum <span class="legend">(Vorschlag nach Rolle)</span></label>
+        <select name="raum" id="raumSelect">
+          <option value="">— automatisch —</option>
+          <option value="Raum 1">Raum 1 (Festangestellte)</option>
+          <option value="Raum 2">Raum 2 (Honorarkräfte)</option>
+        </select>
+      </div>
+      <div>
         <label>Finanzierung</label>
         <select name="finanzierung">
           <option>Privat</option>
@@ -382,8 +376,24 @@
   </div>
 
   <div class="card">
-    <div class="row"><h2 style="margin:0">Letzte Einheiten</h2>
+    <div class="row" style="flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0">Letzte Einheiten</h2>
       <span class="right muted" id="einheitenCount"></span>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+      <label style="margin:0">Zeitraum</label>
+      <select id="einheitenFilterWoche" style="width:auto">
+        <option value="aktuell">Aktuelle Woche</option>
+        <option value="letzte">Letzte Woche</option>
+        <option value="monat">Aktueller Monat</option>
+        <option value="alle">Alle</option>
+      </select>
+      <label style="margin:0">Wochentag</label>
+      <select id="einheitenFilterTag" style="width:auto">
+        <option value="">alle</option>
+        <option>Montag</option><option>Dienstag</option><option>Mittwoch</option>
+        <option>Donnerstag</option><option>Freitag</option><option>Samstag</option>
+      </select>
     </div>
     <table id="einheitenTable" class="responsive">
       <thead><tr>
@@ -416,7 +426,7 @@
       <div><label>Aktenzeichen</label><input name="az" placeholder="z. B. JA-2026-0042"></div>
       <div><label>Therapeut:in <span class="pill bad">Pflicht</span></label><input name="therapeutin" required></div>
 
-      <details class="stamm-section" open style="grid-column:1/-1">
+      <details class="stamm-section" style="grid-column:1/-1">
         <summary>👶 Kind <span class="pill bad" style="margin-left:8px">Pflicht</span></summary>
         <div class="grid grid-3">
           <div><label>Nachname Kind</label><input name="k_nachname" required></div>
@@ -454,6 +464,7 @@
           <option value="Miniabonnement">Miniabonnement (12 Mo / 36 Std)</option>
           <option value="Standardvertrag">Standardvertrag (frei)</option>
           <option value="Jugendamt">Jugendamt (laut Bewilligung)</option>
+          <option value="Ju-Genehmigung">Ju-Genehmigung (Jugendamt zusätzlich genehmigt)</option>
           <option value="Kostenzusage">Kostenzusage (z. B. Krankenkasse / Sonderbehörde)</option>
           <option value="Privat offen">Privat offen (kein Limit)</option>
         </select>
@@ -533,7 +544,7 @@
       <div style="grid-column:1/-1" id="dokumenteBereich"></div>
       <div style="grid-column:span 2">
         <label>Neue Datei hochladen</label>
-        <input type="file" id="dateiUpload" accept=".pdf,.jpg,.jpeg,.png">
+        <input type="file" id="dateiUpload" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.odt,.txt,.xlsx,.xls,.csv">
       </div>
       <div>
         <label>Sichtbarkeit</label>
@@ -630,9 +641,13 @@
         <div><label>Uhrzeit</label><input name="uhrzeit" type="time"></div>
         <div><label>Dauer (Min.)</label><input name="dauer" type="number" value="45"></div>
         <div><label>Therapeut:in</label><input name="therapeut" list="therapeutListDoku" placeholder="aus Therapieplätzen wählen"><datalist id="therapeutListDoku"></datalist></div>
+        <div style="grid-column:1/-1" id="ersatzInfoBox" hidden>
+          <label>Ersatz für abgesagten Termin</label>
+          <input name="ersatzInfo" readonly style="background:#FEF4F4;color:#6F2A2F;font-style:italic">
+        </div>
       </div>
 
-      <details open>
+      <details>
         <summary>Tagesform &amp; Schwerpunkte</summary>
         <div class="grid grid-2" style="margin-top:8px">
           <div>
@@ -764,7 +779,7 @@
   </div>
 
   <div class="card">
-    <div class="row">
+    <div class="row" style="flex-wrap:wrap;gap:10px">
       <h2 style="margin:0">Gespeicherte Dokumentationen</h2>
       <div class="right" style="display:flex;gap:8px;align-items:center">
         <label style="margin:0">Sortieren:</label>
@@ -775,6 +790,21 @@
           <option value="klient_desc">Klient:in Z–A</option>
         </select>
       </div>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+      <label style="margin:0">Zeitraum</label>
+      <select id="dokuFilterWoche" style="width:auto">
+        <option value="aktuell">Aktuelle Woche</option>
+        <option value="letzte">Letzte Woche</option>
+        <option value="monat">Aktueller Monat</option>
+        <option value="alle" selected>Alle</option>
+      </select>
+      <label style="margin:0">Wochentag</label>
+      <select id="dokuFilterTag" style="width:auto">
+        <option value="">alle</option>
+        <option>Montag</option><option>Dienstag</option><option>Mittwoch</option>
+        <option>Donnerstag</option><option>Freitag</option><option>Samstag</option>
+      </select>
     </div>
     <table id="dokuTable" class="responsive">
       <thead><tr><th>Datum</th><th>Klient:in</th><th>Schwerpunkt</th><th>Sitzung</th><th>Therapeut:in</th><th>Termin</th><th></th></tr></thead>
@@ -789,7 +819,7 @@
     <h2>Erstkontakt anlegen</h2>
     <p class="lead">26 Felder gemäß Vorlage <em>Warteliste_blanko.xlsx → Erstkontakt</em>. Nach Platzvergabe können Datensätze in die Warteliste verschoben oder gelöscht werden.</p>
     <form id="formErstkontakt" class="grid grid-3">
-      <details class="stamm-section" open style="grid-column:1/-1">
+      <details class="stamm-section" style="grid-column:1/-1">
         <summary>📋 Erstkontakt-Basisdaten</summary>
         <div class="grid grid-3">
           <div><label>NR (auto)</label><input name="nr" readonly placeholder="wird vergeben"></div>
@@ -811,7 +841,7 @@
         </div>
       </details>
 
-      <details class="stamm-section" open style="grid-column:1/-1">
+      <details class="stamm-section" style="grid-column:1/-1">
         <summary>👶 Kind</summary>
         <div class="grid grid-3">
           <div><label>Vorname</label><input name="k_vorname"></div>
@@ -827,7 +857,7 @@
         <div class="grid grid-2">
           <div><label>Name</label><input name="v_name"></div>
           <div><label>Adresse</label><input name="v_adresse"></div>
-          <div><label>E-Mail</label><input name="v_email" type="email"></div>
+          <div><label>E-Mail <span style="color:var(--bad)">*</span> <span class="legend">(Pflicht: Vater oder Mutter)</span></label><input name="v_email" type="email"></div>
           <div><label>Telefon</label><input name="v_telefon"></div>
         </div>
       </details>
@@ -837,12 +867,12 @@
         <div class="grid grid-2">
           <div><label>Name</label><input name="m_name"></div>
           <div><label>Adresse</label><input name="m_adresse"></div>
-          <div><label>E-Mail</label><input name="m_email" type="email"></div>
+          <div><label>E-Mail <span style="color:var(--bad)">*</span> <span class="legend">(Pflicht: Vater oder Mutter)</span></label><input name="m_email" type="email"></div>
           <div><label>Telefon</label><input name="m_telefon"></div>
         </div>
       </details>
 
-      <details class="stamm-section" open style="grid-column:1/-1">
+      <details class="stamm-section" style="grid-column:1/-1">
         <summary>🎯 Anliegen &amp; Zuordnung</summary>
         <div class="grid grid-3">
           <div>
@@ -861,6 +891,7 @@
 
       <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <button type="reset" class="btn ghost">Zurücksetzen</button>
+        <button type="button" class="btn ghost" id="btnDsgvoMail" title="Öffnet das Mail-Programm mit vorbefülltem DSGVO-Text">📧 DSGVO-Mail vorbereiten</button>
         <button type="submit" class="btn">Erstkontakt speichern</button>
       </div>
     </form>
@@ -873,9 +904,9 @@
       <div class="summary-tile"><div class="num" id="cntWart">0</div><div class="lbl">Auf Warteliste</div></div>
       <div class="summary-tile"><div class="num" id="cntFrei">0</div><div class="lbl">Freie Plätze</div></div>
     </div>
-    <table id="erstTable" style="margin-top:14px">
+    <table id="erstTable" class="responsive" style="margin-top:14px">
       <thead><tr>
-        <th>NR</th><th>Datum</th><th>Kind</th><th>Anliegen</th><th>Therapeut:in</th><th>Warteliste</th><th>Bezahlung</th><th></th>
+        <th>NR</th><th>Datum</th><th>Kind</th><th>Anliegen</th><th>Therapeut:in</th><th>Warteliste</th><th>Bezahlung</th><th>DSGVO-Mail</th><th></th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -973,10 +1004,10 @@
         </tfoot>
       </table>
     </div>
-    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" data-export="abr-ja">⤓ Excel: Jugendamt-Sammelaufstellung</button>
-      <button class="btn ghost" data-export="abr-ja-detail">⤓ Excel: Jugendamt-Einzelpositionen (jede Einheit)</button>
-      <button class="btn ghost" id="btnAbrJaPdf">🖨 PDF-Druck: nur AZ, Name, Stunden</button>
+    <div class="abr-btn-row">
+      <button class="btn abr-action" data-export="abr-ja">⤓ Excel: Jugendamt-Sammelaufstellung</button>
+      <button class="btn abr-action" data-export="abr-ja-detail">⤓ Excel: Jugendamt-Einzelpositionen</button>
+      <button class="btn abr-action" id="btnAbrJaPdf">🖨 PDF-Druck (mit Terminangaben)</button>
     </div>
   </div>
 
@@ -1007,8 +1038,8 @@
         </tfoot>
       </table>
     </div>
-    <div style="margin-top:14px">
-      <button class="btn" data-export="abr-priv">⤓ Excel: Privat-Sammelaufstellung</button>
+    <div class="abr-btn-row">
+      <button class="btn abr-action" data-export="abr-priv">⤓ Excel: Privat-Sammelaufstellung</button>
     </div>
   </div>
 
@@ -1041,9 +1072,24 @@
     </div>
     <hr>
     <table id="weekTable" class="responsive">
-      <thead><tr><th>Tag</th><th>Datum</th><th>Uhrzeit</th><th>Therapeut:in</th><th>Patient</th><th>Leistung</th><th>Min.</th><th>Status</th></tr></thead>
+      <thead><tr><th>Tag</th><th>Datum</th><th>Uhrzeit</th><th>Therapeut:in</th><th>Patient</th><th>Leistung</th><th>Raum</th><th>Min.</th><th>Status</th></tr></thead>
       <tbody></tbody>
     </table>
+  </div>
+
+  <div class="card">
+    <h2>📅 Raum-Belegung (Wochenkalender)</h2>
+    <p class="lead">Zeigt alle Termine der Praxis in einer Wochenansicht je Raum.
+      <strong>Raum 1</strong> ist Festangestellten zugeordnet, <strong>Raum 2</strong> den Honorarkräften – Doppelbelegungen werden rot markiert.</p>
+    <div class="row toolbar" style="flex-wrap:wrap;gap:8px">
+      <label style="margin:0">Woche</label>
+      <input type="week" id="kalenderWeek" style="width:auto">
+      <button class="btn ghost small" id="kalenderHeute" type="button">Diese Woche</button>
+      <span class="right muted" id="kalenderInfo"></span>
+    </div>
+    <div id="kalenderRaum1" style="margin-top:12px"></div>
+    <div id="kalenderRaum2" style="margin-top:18px"></div>
+    <div id="kalenderKonflikte" style="margin-top:14px"></div>
   </div>
 
   <div class="card">
@@ -1216,7 +1262,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button[data-tab]'); if(!b) return;
   document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('active', x===b));
   document.querySelectorAll('section[data-panel]').forEach(p=>p.hidden = p.dataset.panel !== b.dataset.tab);
-  if(b.dataset.tab==='uebersicht') renderUebersicht();
+  if(b.dataset.tab==='uebersicht'){ renderUebersicht(); renderKalender(); }
   if(b.dataset.tab==='wjh') renderWJH();
   if(b.dataset.tab==='warteliste') renderErstkontakte();
   if(b.dataset.tab==='stammdaten') renderStammdaten();
@@ -1436,6 +1482,39 @@ formE.addEventListener('submit', e=>{
       }
     }, 200);
   }
+
+  // Bei Absage durch Therapeut:in: Vorschlag, Ersatz-/Folgetermin direkt anzulegen
+  if(neuId && o.status === 'Abgesagt durch Therapeut:in' && o.patient){
+    setTimeout(() => {
+      if(confirm(`Termin von ${o.patient} wurde durch Therapeut:in abgesagt.\n\nGleich einen Ersatz- oder Folgetermin anlegen?\n(Die Daten werden vorbefüllt – nur das neue Datum eintragen.)`)){
+        // Vorbefüllen mit gleichen Werten, Status = Ersatztermin, Datum leer
+        formE.reset();
+        const set = (n, v) => { const el = formE.querySelector(`[name="${n}"]`); if(el) el.value = v == null ? '' : v; };
+        set('patient', o.patient);
+        set('uhrzeit', o.uhrzeit);
+        set('dauer', o.dauer || 45);
+        set('therapeut', o.therapeut);
+        set('leistung', o.leistung);
+        set('form', o.form);
+        set('finanzierung', o.finanzierung);
+        set('status', 'Ersatztermin');
+        // Quell-Termin im Hidden-Feld merken (für Auto-Fill in Stundendoku später)
+        let hidden = formE.querySelector('[name=ersetztTerminId]');
+        if(!hidden){
+          hidden = document.createElement('input');
+          hidden.type = 'hidden'; hidden.name = 'ersetztTerminId';
+          formE.appendChild(hidden);
+        }
+        hidden.value = neuId;
+        const notiz = formE.querySelector('[name=notiz]');
+        if(notiz) notiz.value = `Ersatz für am ${o.datum} abgesagten Termin.`;
+        formE.scrollIntoView({behavior:'smooth', block:'start'});
+        const dateF = formE.querySelector('[name=datum]');
+        if(dateF) dateF.focus();
+        toast('Ersatztermin vorbefüllt – Datum eintragen');
+      }
+    }, 200);
+  }
 });
 
 /* Übernahme der Termin-Daten ins Doku-Formular (wiederverwendbar:
@@ -1455,6 +1534,35 @@ function prefillDokuFromEinheit(o){
   set('therapeut', o.therapeut);
   if(o.leistung && o.leistung.toLowerCase().includes('lrs')) set('schwerpunkt', 'LRS');
   else if(o.leistung && o.leistung.toLowerCase().includes('dyskalkulie')) set('schwerpunkt', 'DYS');
+
+  // Ersatztermin: zugehörigen abgesagten Termin der Therapeut:in finden
+  const ersatzBox = document.getElementById('ersatzInfoBox');
+  if(ersatzBox){
+    ersatzBox.hidden = true;
+    set('ersatzInfo', '');
+  }
+  if(o.status === 'Ersatztermin'){
+    // 1. Direkter Link (wenn beim Anlegen gespeichert)
+    let cancelled = null;
+    if(o.ersetztTerminId){
+      cancelled = state.einheiten.find(x => x.id === o.ersetztTerminId);
+    }
+    // 2. Fallback: jüngste Absage durch Therapeut:in vor diesem Datum für Patient + Therapeut:in
+    if(!cancelled){
+      cancelled = state.einheiten
+        .filter(x => x.status === 'Abgesagt durch Therapeut:in'
+                  && x.patient === o.patient
+                  && (x.therapeut||'') === (o.therapeut||'')
+                  && (x.datum||'') < (o.datum||''))
+        .sort((a,b)=> (b.datum||'').localeCompare(a.datum||''))[0];
+    }
+    if(cancelled && ersatzBox){
+      ersatzBox.hidden = false;
+      const fmtDe = (iso)=> iso ? iso.split('-').reverse().join('.') : '';
+      set('ersatzInfo', `Ersatz für Termin am ${fmtDe(cancelled.datum)} um ${cancelled.uhrzeit||'—'} (abgesagt durch Therapeut:in)`);
+    }
+  }
+
   // Klient-Auswahl auslösen -> Auto-Fill für gebKlasse und Sitzungsnummer
   const klientEl = f.querySelector('[name=klient]');
   if(klientEl) klientEl.dispatchEvent(new Event('change'));
@@ -1469,11 +1577,30 @@ document.getElementById('einheitCancelEdit').addEventListener('click', ()=>{
 function renderEinheiten(){
   const tb = document.querySelector('#einheitenTable tbody');
   tb.innerHTML = '';
-  const visible = state.einheiten.filter(canSeeEinheit);
+  let visible = state.einheiten.filter(canSeeEinheit);
+  // Wochenfilter anwenden
+  const zeit = (document.getElementById('einheitenFilterWoche')||{}).value || 'aktuell';
+  const tag  = (document.getElementById('einheitenFilterTag')||{}).value || '';
+  const now = new Date(); now.setHours(0,0,0,0);
+  const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay()||7)-1));
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const lastMonday = new Date(monday); lastMonday.setDate(monday.getDate()-7);
+  const lastSunday = new Date(monday); lastSunday.setDate(monday.getDate()-1);
+  visible = visible.filter(e=>{
+    if(zeit==='alle') return true;
+    const d = new Date(e.datum); if(isNaN(d)) return false;
+    if(zeit==='aktuell') return d >= monday && d <= sunday;
+    if(zeit==='letzte')  return d >= lastMonday && d <= lastSunday;
+    if(zeit==='monat')   return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+    return true;
+  });
+  if(tag) visible = visible.filter(e=> e.wochentag === tag);
+  // Sortierung nach Datum (neueste zuerst, sonst Reihenfolge)
+  visible = visible.slice().sort((a,b)=> (b.datum||'').localeCompare(a.datum||''));
   if(!visible.length){
-    tb.innerHTML = '<tr><td colspan="10" class="empty">Noch keine Einheiten für diese Rolle/diesen Namen.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="10" class="empty">Keine Einheiten im gewählten Zeitraum.</td></tr>';
   }else{
-    visible.slice(0,30).forEach(e=>{
+    visible.slice(0,50).forEach(e=>{
       const tr = document.createElement('tr');
       const status = (e.status==='Durchgeführt'||e.status==='Ersatztermin') ? 'ok'
         : (e.status==='Abgesagt durch Therapeut:in' ? 'bad'
@@ -1506,6 +1633,10 @@ function renderEinheiten(){
   }
   document.getElementById('einheitenCount').textContent = `${visible.length} sichtbar / ${state.einheiten.length} gesamt`;
 }
+['einheitenFilterWoche','einheitenFilterTag'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('change', renderEinheiten);
+});
 document.querySelector('#einheitenTable').addEventListener('click', e=>{
   // Nachträgliche Übernahme Termin -> Stundendoku
   const dokuId = e.target.dataset.dokuFromEinheit;
@@ -1675,9 +1806,37 @@ function renderDokus(){
   if(!state.dokus.length){
     tb.innerHTML = '<tr><td colspan="7" class="empty">Noch keine Dokumentation erfasst.</td></tr>'; return;
   }
+  // Zeitraum-Filter
+  let pool = state.dokus.slice();
+  const zeit = (document.getElementById('dokuFilterWoche')||{}).value || 'alle';
+  const tag  = (document.getElementById('dokuFilterTag')||{}).value || '';
+  if(zeit !== 'alle'){
+    const now = new Date(); now.setHours(0,0,0,0);
+    const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay()||7)-1));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    const lastMonday = new Date(monday); lastMonday.setDate(monday.getDate()-7);
+    const lastSunday = new Date(monday); lastSunday.setDate(monday.getDate()-1);
+    pool = pool.filter(d=>{
+      const dd = new Date(d.datum); if(isNaN(dd)) return false;
+      if(zeit==='aktuell') return dd >= monday && dd <= sunday;
+      if(zeit==='letzte')  return dd >= lastMonday && dd <= lastSunday;
+      if(zeit==='monat')   return dd.getFullYear()===now.getFullYear() && dd.getMonth()===now.getMonth();
+      return true;
+    });
+  }
+  if(tag){
+    const wochentage = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+    pool = pool.filter(d=>{
+      const dd = new Date(d.datum); if(isNaN(dd)) return false;
+      return wochentage[dd.getDay()] === tag;
+    });
+  }
+  if(!pool.length){
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Keine Dokumentation im gewählten Zeitraum.</td></tr>'; return;
+  }
   // Sortierung anwenden
   const sortKey = (document.getElementById('dokuSort') && document.getElementById('dokuSort').value) || 'datum_desc';
-  const sorted = state.dokus.slice().sort((a,b)=>{
+  const sorted = pool.sort((a,b)=>{
     const dA = a.datum || '', dB = b.datum || '';
     const kA = (a.klient||'').toLowerCase(), kB = (b.klient||'').toLowerCase();
     switch(sortKey){
@@ -1964,6 +2123,10 @@ function findMatchingEinheit(doku){
 }
 
 document.getElementById('dokuSort').addEventListener('change', renderDokus);
+['dokuFilterWoche','dokuFilterTag'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('change', renderDokus);
+});
 
 /* Doku-Detail-Modal öffnen/schließen */
 function openDokuModal(id){
@@ -2792,28 +2955,96 @@ document.addEventListener('DOMContentLoaded', () => {
 const formK = document.getElementById('formErstkontakt');
 formK.addEventListener('submit', e=>{
   e.preventDefault();
-  const o = dataFromForm(formK); o.id = uid();
+  const o = dataFromForm(formK);
+  // Pflichtfeld: mindestens eine Eltern-E-Mail
+  if(!o.v_email && !o.m_email){
+    toast('Bitte mindestens eine E-Mail (Vater oder Mutter) eintragen – Pflicht für DSGVO-Versand.');
+    return;
+  }
+  o.id = uid();
   o.nr = (state.erstkontakte.length+1).toString().padStart(3,'0');
   state.erstkontakte.unshift(o);
   save(); renderErstkontakte();
+
+  // Direkt anbieten, die DSGVO-Mail zu versenden
+  setTimeout(()=>{
+    if(confirm(`Erstkontakt gespeichert.\n\nMöchtest du jetzt die DSGVO-Zustimmungs-Mail an die Eltern vorbereiten?\n(Öffnet dein Mail-Programm mit vorbefülltem Text.)`)){
+      sendeDsgvoMail(o);
+    }
+  }, 200);
   formK.reset();
   toast('Erstkontakt gespeichert');
 });
 
+/* DSGVO-Mail-Versand: öffnet das Mail-Programm der Nutzer:in
+   mit vorbefülltem Betreff und Body. Nach dem Klick wird der
+   Status "dsgvo_mail_sent" beim Erstkontakt gesetzt.
+   Hinweis: Echter Versand erst nach NocoDB-Migration mit Backend.   */
+function sendeDsgvoMail(k){
+  if(!k){
+    // Aus dem aktuellen Formular nehmen (Button im Formular)
+    k = dataFromForm(formK);
+  }
+  const empfaenger = [k.v_email, k.m_email].filter(Boolean).join(',');
+  if(!empfaenger){
+    toast('Bitte erst eine E-Mail-Adresse eintragen.');
+    return;
+  }
+  const kindName = [k.k_vorname, k.k_nachname].filter(Boolean).join(' ') || 'Ihr Kind';
+  const betreff = `DSGVO-Einwilligung zur Datenverarbeitung – ${kindName} – Institut Lernen`;
+  const body = `Sehr geehrte Eltern von ${kindName},
+
+vielen Dank für Ihre Kontaktaufnahme mit dem Institut Lernen.
+
+Damit wir den Erstkontakt sowie eine mögliche spätere lerntherapeutische Begleitung Ihres Kindes datenschutzgerecht bearbeiten dürfen, benötigen wir Ihre schriftliche Einwilligung zur Verarbeitung der personenbezogenen Daten gemäß DSGVO Art. 6 Abs. 1 lit. a und Art. 9 Abs. 2 lit. a.
+
+Die ausführliche Datenschutzerklärung sowie das Einwilligungsformular finden Sie als Anhang.
+
+Bitte senden Sie uns das unterschriebene Formular per E-Mail (eingescannt) oder per Post zurück.
+
+Bei Fragen stehen wir Ihnen gerne unter info@institut-lernen.de oder telefonisch zur Verfügung.
+
+Mit freundlichen Grüßen
+Jeannine Hohmann
+Institut Lernen`;
+  const mailto = `mailto:${encodeURIComponent(empfaenger)}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(body)}`;
+  // Mail-Programm öffnen
+  window.location.href = mailto;
+  // Status setzen (nur bei gespeichertem Erstkontakt mit ID)
+  if(k.id){
+    const e = state.erstkontakte.find(x=>x.id===k.id);
+    if(e){
+      e.dsgvo_mail_sent = new Date().toISOString().slice(0,10);
+      save(); renderErstkontakte();
+    }
+  }
+  toast('Mail-Programm geöffnet. Bitte Anhang (DSGVO-Formular) anhängen und absenden.');
+}
+
+document.getElementById('btnDsgvoMail').addEventListener('click', ()=> sendeDsgvoMail());
+
 function renderErstkontakte(){
   const tb = document.querySelector('#erstTable tbody'); tb.innerHTML='';
   if(!state.erstkontakte.length){
-    tb.innerHTML = '<tr><td colspan="8" class="empty">Noch keine Erstkontakte.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="empty">Noch keine Erstkontakte.</td></tr>';
   }else{
     state.erstkontakte.forEach(k=>{
       const name = [k.k_vorname, k.k_nachname].filter(Boolean).join(' ');
       const tr = document.createElement('tr');
+      const mailPill = k.dsgvo_mail_sent
+        ? '<span class="pill ok" title="DSGVO-Mail versendet">✓ Mail</span>'
+        : (k.v_email||k.m_email||k.k_email) ? '<span class="pill warn">○ ausstehend</span>'
+                                            : '<span class="pill bad">keine Mail</span>';
       tr.innerHTML = `
-        <td>${k.nr||''}</td><td>${k.datum||''}</td><td>${name}</td>
-        <td>${k.anliegen||''}</td><td>${k.zug_therapeut||''}</td>
-        <td>${k.warteliste==='ja' ? '<span class="pill warn">ja</span>':'nein'}</td>
-        <td>${k.bezahlung||''}</td>
-        <td><button class="btn small ghost" data-del-k="${k.id}">Löschen</button></td>`;
+        <td data-label="Nr">${k.nr||''}</td>
+        <td data-label="Datum">${k.datum||''}</td>
+        <td data-label="Name">${name}</td>
+        <td data-label="Anliegen">${k.anliegen||''}</td>
+        <td data-label="Therapeut:in">${k.zug_therapeut||''}</td>
+        <td data-label="Warteliste">${k.warteliste==='ja' ? '<span class="pill warn">ja</span>':'nein'}</td>
+        <td data-label="Bezahlung">${k.bezahlung||''}</td>
+        <td data-label="DSGVO-Mail">${mailPill}</td>
+        <td data-label="Aktion"><button class="btn small ghost" data-del-k="${k.id}">Löschen</button></td>`;
       tb.appendChild(tr);
     });
   }
@@ -3405,7 +3636,7 @@ function renderUebersicht(){
   });
   const tb = document.querySelector('#weekTable tbody'); tb.innerHTML='';
   if(!items.length){
-    tb.innerHTML = '<tr><td colspan="8" class="empty">Keine Einheiten in dieser Woche.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="empty">Keine Einheiten in dieser Woche.</td></tr>';
   }else{
     items.sort((a,b)=>a.datum.localeCompare(b.datum) || (a.uhrzeit||'').localeCompare(b.uhrzeit||''));
     items.forEach(e=>{
@@ -3430,6 +3661,7 @@ function renderUebersicht(){
         <td data-label="Therapeut:in">${e.therapeut||''}</td>
         <td data-label="Patient">${patientCell}</td>
         <td data-label="Leistung">${e.leistung||''}</td>
+        <td data-label="Raum">${e.raum||autoRaumFuerTherapeut(e.therapeut)||'—'}</td>
         <td data-label="Dauer (Min)">${e.dauer||''}</td>
         <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>`;
       tb.appendChild(tr);
@@ -3479,28 +3711,94 @@ document.getElementById('btnPrintReport').addEventListener('click', ()=>{
   const m = document.getElementById('reportMonth').value;
   if(!t || !m){ toast('Bitte Therapeut:in und Monat wählen.'); return; }
   const [y,mm] = m.split('-').map(Number);
+  // Filter: Therapeut:in (groß-/kleinschreibung tolerant) + Monat
+  const norm = s => (s||'').toLowerCase().trim();
   const items = state.einheiten.filter(e=>{
-    if(e.therapeut!==t) return false;
+    if(norm(e.therapeut) !== norm(t)) return false;
     const d = new Date(e.datum);
-    return d.getFullYear()===y && d.getMonth()===mm-1;
+    return !isNaN(d) && d.getFullYear()===y && d.getMonth()===mm-1;
   });
+  if(!items.length){
+    document.getElementById('reportPreview').innerHTML =
+      `<div style="padding:14px;background:#FEF4F4;border-left:4px solid var(--primary);border-radius:6px;color:#6F2A2F">
+        Keine Einheiten für <strong>${t}</strong> im Monat <strong>${m}</strong> gefunden.
+        Bitte prüfen, ob Name und Monat passen, oder ob Einheiten überhaupt erfasst sind.
+       </div>`;
+    return;
+  }
+  const sorted = items.slice().sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
   const done = items.filter(e=>e.status==='Durchgeführt');
-  const hours = (done.reduce((s,e)=>s+(parseInt(e.dauer)||0),0)/60);
-  const html = `
-    <div style="background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px">
-      <h2 style="margin-top:0">Tätigkeitsbericht ${m} – ${t}</h2>
-      <p>Einheiten gesamt: <strong>${items.length}</strong>, durchgeführt: <strong>${done.length}</strong>, Stunden: <strong>${hours.toFixed(1).replace('.',',')}</strong></p>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#f2f2f2"><th align="left">Datum</th><th align="left">Uhrzeit</th><th align="left">Patient</th><th align="left">Leistung</th><th align="left">Min.</th><th align="left">Status</th></tr></thead>
-        <tbody>
-          ${items.sort((a,b)=>a.datum.localeCompare(b.datum)).map(e=>`
-            <tr><td>${e.datum||''}</td><td>${e.uhrzeit||''}</td><td>${e.patient||''}</td><td>${e.leistung||''}</td><td>${e.dauer||''}</td><td>${e.status||''}</td></tr>`).join('')}
-        </tbody>
-      </table>
-      <p style="margin-top:20px;color:#666;font-size:11px">Erstellt: ${new Date().toLocaleString('de-DE')} · Institut für Lernen</p>
-    </div>`;
-  document.getElementById('reportPreview').innerHTML = html;
-  setTimeout(()=>window.print(), 200);
+  const ersatz = items.filter(e=>e.status==='Ersatztermin');
+  const absElt = items.filter(e=>e.status==='Abgesagt durch Eltern');
+  const absTher = items.filter(e=>e.status==='Abgesagt durch Therapeut:in');
+  const minDone = done.reduce((s,e)=>s+(parseInt(e.dauer)||0),0)
+                + ersatz.reduce((s,e)=>s+(parseInt(e.dauer)||0),0)
+                + absElt.reduce((s,e)=>s+(parseInt(e.dauer)||0),0);
+  const hours = (minDone/60);
+  const ue = (minDone/45);
+  const fmtDe = iso => iso ? iso.split('-').reverse().join('.') : '';
+
+  const rowsHtml = sorted.map(e=>`
+    <tr>
+      <td>${fmtDe(e.datum)}</td>
+      <td>${e.wochentag||''}</td>
+      <td>${e.uhrzeit||''}</td>
+      <td>${e.patient||''}</td>
+      <td>${e.leistung||''}</td>
+      <td style="text-align:right">${e.dauer||''} min</td>
+      <td>${e.status||''}</td>
+    </tr>`).join('');
+
+  const win = window.open('', '_blank', 'width=900,height=1000');
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tätigkeitsbericht ${m} – ${t}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#2D2429;line-height:1.45}
+      h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px;margin-top:0}
+      h2{color:#6F2A2F;margin:18px 0 6px;font-size:15px;border-bottom:1px solid #E5DCDE;padding-bottom:4px}
+      .meta{color:#7A6D6D;font-size:12px;margin-bottom:14px}
+      .info-box{background:#F8F2F3;border-left:4px solid #9E4047;padding:10px 14px;margin:10px 0;border-radius:4px;font-size:13px}
+      table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+      th,td{padding:6px 8px;border-bottom:1px solid #E5DCDE;text-align:left;vertical-align:top}
+      th{background:#F8F2F3;color:#6F2A2F;text-transform:uppercase;font-size:11px}
+      .grid-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+      .stat-card{background:#fff;border:1px solid #E5DCDE;border-radius:6px;padding:8px 12px;text-align:center}
+      .stat-card .num{font-size:20px;font-weight:bold;color:#9E4047}
+      .stat-card .lbl{font-size:11px;color:#7A6D6D;text-transform:uppercase}
+      @media print{ button{display:none} body{margin:10mm} }
+      @page { size: A4; margin: 12mm }
+    </style></head><body>
+    <button onclick="window.print()" style="float:right;padding:8px 14px;background:#9E4047;color:white;border:0;border-radius:6px;cursor:pointer">🖨 Drucken / als PDF</button>
+    <h1>Tätigkeitsbericht ${m}</h1>
+    <div class="meta">${t} · Institut Lernen · Erstellt: ${new Date().toLocaleString('de-DE')}</div>
+
+    <div class="grid-stats">
+      <div class="stat-card"><div class="num">${items.length}</div><div class="lbl">Einheiten gesamt</div></div>
+      <div class="stat-card"><div class="num">${done.length}</div><div class="lbl">Durchgeführt</div></div>
+      <div class="stat-card"><div class="num">${ersatz.length}</div><div class="lbl">Ersatztermine</div></div>
+      <div class="stat-card"><div class="num">${absElt.length}+${absTher.length}</div><div class="lbl">Absagen (E+T)</div></div>
+    </div>
+
+    <div class="info-box">
+      Abrechenbare Stunden: <strong>${hours.toFixed(2).replace('.',',')} h</strong> &nbsp;·&nbsp;
+      Therapieeinheiten (UE à 45 min): <strong>${ue.toFixed(1).replace('.',',')}</strong>
+    </div>
+
+    <h2>Einzelne Termine (chronologisch)</h2>
+    <table>
+      <thead><tr><th>Datum</th><th>Tag</th><th>Uhrzeit</th><th>Klient:in</th><th>Leistung</th><th style="text-align:right">Dauer</th><th>Status</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    </body></html>`);
+  win.document.close();
+
+  // Kurze Vorschau in der App selbst
+  document.getElementById('reportPreview').innerHTML =
+    `<div style="padding:14px;background:#F8F2F3;border-left:4px solid var(--primary);border-radius:6px;font-size:14px">
+       <strong>Tätigkeitsbericht ${m} – ${t}</strong> in neuem Fenster geöffnet.<br>
+       ${items.length} Einheiten, davon ${done.length} durchgeführt, ${ersatz.length} Ersatztermine,
+       ${absElt.length} Eltern- und ${absTher.length} Therapeut:innen-Absagen.<br>
+       Abrechenbare Stunden: <strong>${hours.toFixed(2).replace('.',',')} h</strong>.
+     </div>`;
 });
 
 /* ============================================================
@@ -3530,6 +3828,109 @@ function therapeutRolle(therapeutName){
   const t = (state.therapeuten||[]).find(x => x.name.toLowerCase().trim() === low);
   return t ? t.rolle : 'festangestellt';
 }
+
+/* Standard-Raum-Vorschlag anhand der Therapeut:in-Rolle:
+   Festangestellt -> Raum 1, Honorar -> Raum 2 */
+function autoRaumFuerTherapeut(name){
+  return therapeutRolle(name) === 'honorar' ? 'Raum 2' : 'Raum 1';
+}
+
+/* Kalender-Render: zwei Raum-Zeilen × 6 Wochentage,
+   Einheiten als kleine Blöcke. Konflikt-Erkennung bei Überschneidung. */
+function renderKalender(){
+  const box1 = document.getElementById('kalenderRaum1'); if(!box1) return;
+  const box2 = document.getElementById('kalenderRaum2');
+  const konfliktBox = document.getElementById('kalenderKonflikte');
+  let weekInput = document.getElementById('kalenderWeek').value;
+  if(!weekInput){
+    const d = new Date(); const dow = d.getDay()||7;
+    const monday = new Date(d); monday.setDate(d.getDate()-dow+1);
+    const onejan = new Date(monday.getFullYear(),0,1);
+    const wn = Math.ceil((((monday-onejan)/86400000)+onejan.getDay()+1)/7);
+    weekInput = monday.getFullYear()+'-W'+String(wn).padStart(2,'0');
+    document.getElementById('kalenderWeek').value = weekInput;
+  }
+  const [mon, sun] = isoWeekRange(weekInput);
+  document.getElementById('kalenderInfo').textContent = mon ? `${fmtDate(mon)} – ${fmtDate(sun)}` : '';
+
+  const woche = state.einheiten.filter(e=>{
+    const d = new Date(e.datum);
+    return mon && !isNaN(d) && d>=mon && d<=new Date(sun.getTime()+86400000-1);
+  });
+  const tage = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+
+  const renderRaum = (raumName, items) => {
+    const byTag = {};
+    tage.forEach(t => byTag[t] = []);
+    items.forEach(e=>{
+      const t = e.wochentag || tage[(new Date(e.datum).getDay()||7)-1];
+      if(byTag[t]) byTag[t].push(e);
+    });
+    Object.values(byTag).forEach(arr => arr.sort((a,b)=> (a.uhrzeit||'').localeCompare(b.uhrzeit||'')));
+    const farbe = raumName === 'Raum 1' ? '#E7F0F8' : '#F8EFE4';
+    const rand  = raumName === 'Raum 1' ? '#4A6E96' : '#B47640';
+    return `
+      <h3 style="color:${rand};margin:8px 0 4px 0;font-size:14px">${raumName}
+        <span class="legend">(${items.length} Termin${items.length===1?'':'e'})</span>
+      </h3>
+      <div style="overflow-x:auto">
+        <div style="display:grid;grid-template-columns:repeat(${tage.length},1fr);gap:6px;min-width:600px">
+          ${tage.map(t=>{
+            const cells = byTag[t].map(e=>{
+              const stColor = e.status==='Abgesagt durch Therapeut:in' ? '#fde7ea'
+                          : e.status==='Abgesagt durch Eltern' ? '#fbf3df'
+                          : '#fff';
+              return `<div style="background:${stColor};border:1px solid ${rand};border-radius:4px;padding:4px 6px;margin-bottom:4px;font-size:11px">
+                <strong>${e.uhrzeit||''}</strong> · ${e.patient||'—'}<br>
+                <span style="color:#666">${e.therapeut||''} · ${e.dauer||45} min</span>
+              </div>`;
+            }).join('');
+            return `<div style="background:${farbe};border-radius:6px;padding:6px;min-height:80px">
+              <div style="font-weight:bold;font-size:12px;color:${rand};margin-bottom:4px">${t}</div>
+              ${cells || '<div style="color:#999;font-size:11px;font-style:italic">frei</div>'}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  };
+
+  const r1 = woche.filter(e => (e.raum||autoRaumFuerTherapeut(e.therapeut)) === 'Raum 1');
+  const r2 = woche.filter(e => (e.raum||autoRaumFuerTherapeut(e.therapeut)) === 'Raum 2');
+  box1.innerHTML = renderRaum('Raum 1', r1);
+  box2.innerHTML = renderRaum('Raum 2', r2);
+
+  // Konflikt-Erkennung: zwei Termine im gleichen Raum zur gleichen Zeit
+  const konflikte = [];
+  const checkKonflikte = (raumName, items) => {
+    for(let i=0;i<items.length;i++){
+      for(let j=i+1;j<items.length;j++){
+        if(items[i].datum === items[j].datum
+           && items[i].uhrzeit && items[j].uhrzeit
+           && items[i].uhrzeit === items[j].uhrzeit
+           && items[i].therapeut !== items[j].therapeut){
+          konflikte.push({raum:raumName, e1:items[i], e2:items[j]});
+        }
+      }
+    }
+  };
+  checkKonflikte('Raum 1', r1);
+  checkKonflikte('Raum 2', r2);
+  if(konflikte.length){
+    konfliktBox.innerHTML = `<div class="card" style="border-left:4px solid var(--bad);background:#fde7ea;margin-top:10px">
+      <strong style="color:var(--bad)">⚠ ${konflikte.length} Raum-Konflikt${konflikte.length===1?'':'e'} erkannt:</strong>
+      <ul style="margin:6px 0 0 18px;font-size:13px">
+        ${konflikte.map(k=>`<li>${k.raum} am ${k.e1.datum} um ${k.e1.uhrzeit}: ${k.e1.therapeut} ↔ ${k.e2.therapeut}</li>`).join('')}
+      </ul>
+    </div>`;
+  } else {
+    konfliktBox.innerHTML = '<div class="legend" style="margin-top:8px">✓ Keine Doppelbelegungen in dieser Woche.</div>';
+  }
+}
+document.getElementById('kalenderWeek').addEventListener('change', renderKalender);
+document.getElementById('kalenderHeute').addEventListener('click', ()=>{
+  document.getElementById('kalenderWeek').value = '';
+  renderKalender();
+});
 
 /* Style-Helper: macht aus einer Roh-Sheet eine schön formatierte Tabelle.
    Header-Zeile rot, Daten mit Zebra-Streifen, dünner Rahmen, Auto-Spaltenbreiten. */

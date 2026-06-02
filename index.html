@@ -1685,8 +1685,8 @@ function renderEinheiten(){
         <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>
         <td data-label="Doku">${dokuPill}</td>
         <td>
-          <button class="btn small ghost" data-edit-einheit="${e.id}">Bearbeiten</button>
-          <button class="btn small ghost" data-del="${e.id}">Löschen</button>
+          <button type="button" class="btn small ghost" data-edit-einheit="${e.id}" onclick="window.editEinheitById('${e.id}')">Bearbeiten</button>
+          <button type="button" class="btn small ghost" data-del="${e.id}" onclick="window.deleteEinheitById('${e.id}')" style="color:var(--bad);border-color:var(--bad)">Löschen</button>
         </td>`;
       tb.appendChild(tr);
     });
@@ -1697,37 +1697,34 @@ function renderEinheiten(){
   const el = document.getElementById(id);
   if(el) el.addEventListener('change', renderEinheiten);
 });
+// Globale Aktionen — durch onclick im Markup garantiert erreichbar,
+// unabhängig von Event-Delegation und CSS-Layern.
+window.editEinheitById = function(id){
+  const ein = state.einheiten.find(x => x.id === id); if(!ein) return;
+  formE.reset();
+  Object.entries(ein).forEach(([k,v])=>{
+    const el = formE.querySelector(`[name="${k}"]`); if(el) el.value = v == null ? '' : v;
+  });
+  formE.querySelector('[name=id]').value = ein.id;
+  formE.scrollIntoView({behavior:'smooth', block:'start'});
+  toast('Einheit geladen – nach Änderungen speichern');
+};
+window.deleteEinheitById = function(id){
+  const ein = state.einheiten.find(x => x.id === id);
+  const beschr = ein ? `${ein.patient||'?'} am ${ein.datum||'?'} um ${ein.uhrzeit||'?'}` : id;
+  if(confirm(`Einheit „${beschr}" wirklich löschen?`)){
+    state.einheiten = state.einheiten.filter(x=>x.id!==id);
+    save(); renderEinheiten();
+    toast('Einheit gelöscht');
+  }
+};
+
+// Zusätzliche Event-Delegation für "+ Doku anlegen"-Button (kein onclick im Markup, da Funktion oben definiert).
 document.querySelector('#einheitenTable').addEventListener('click', e=>{
-  // closest() — funktioniert auch wenn Klick auf Icon/Text innerhalb des Buttons landet
   const dokuBtn = e.target.closest('[data-doku-from-einheit]');
   if(dokuBtn){
     const ein = state.einheiten.find(x => x.id === dokuBtn.dataset.dokuFromEinheit);
     if(ein) prefillDokuFromEinheit(ein);
-    return;
-  }
-  const editBtn = e.target.closest('[data-edit-einheit]');
-  if(editBtn){
-    const ein = state.einheiten.find(x => x.id === editBtn.dataset.editEinheit); if(!ein) return;
-    formE.reset();
-    Object.entries(ein).forEach(([k,v])=>{
-      const el = formE.querySelector(`[name="${k}"]`); if(el) el.value = v == null ? '' : v;
-    });
-    formE.querySelector('[name=id]').value = ein.id;
-    formE.scrollIntoView({behavior:'smooth', block:'start'});
-    toast('Einheit geladen – nach Änderungen speichern');
-    return;
-  }
-  const delBtn = e.target.closest('[data-del]');
-  if(delBtn){
-    const delId = delBtn.dataset.del;
-    if(!delId) return;
-    const ein = state.einheiten.find(x => x.id === delId);
-    const beschr = ein ? `${ein.patient||'?'} am ${ein.datum||'?'} um ${ein.uhrzeit||'?'}` : delId;
-    if(confirm(`Einheit „${beschr}" wirklich löschen?`)){
-      state.einheiten = state.einheiten.filter(x=>x.id!==delId);
-      save(); renderEinheiten();
-      toast('Einheit gelöscht');
-    }
   }
 });
 

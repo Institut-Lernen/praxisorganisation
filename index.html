@@ -152,12 +152,12 @@
   /* gleichmäßige Höhe für alle Eingabefelder pro Zeile */
   .grid > div{display:flex;flex-direction:column;justify-content:flex-start}
   input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0}
-  button.btn{background:var(--primary);color:#fff;border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500}
-  button.btn:hover{filter:brightness(1.1)}
-  button.btn.ghost{background:transparent;color:var(--primary);border:1px solid var(--primary)}
-  button.btn.danger{background:var(--bad)}
-  button.btn.warn{background:var(--warn)}
-  button.btn.small{padding:5px 10px;font-size:12px}
+  button.btn, label.btn, .btn{background:var(--primary);color:#fff;border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;display:inline-block;text-align:center;text-decoration:none}
+  button.btn:hover, label.btn:hover, .btn:hover{filter:brightness(1.1)}
+  button.btn.ghost, label.btn.ghost, .btn.ghost{background:transparent;color:var(--primary);border:1px solid var(--primary)}
+  button.btn.danger, .btn.danger{background:var(--bad)}
+  button.btn.warn, .btn.warn{background:var(--warn)}
+  button.btn.small, label.btn.small, .btn.small{padding:5px 10px;font-size:12px}
   /* Abrechnungs-Buttons einheitlich */
   .abr-btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
   .abr-btn-row .abr-action{flex:1 1 220px;min-height:44px;padding:10px 14px;font-size:14px;font-weight:500;justify-content:center}

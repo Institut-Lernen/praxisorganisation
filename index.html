@@ -3449,38 +3449,47 @@ function renderAbrechnung(){
 
 document.getElementById('abrMonth').addEventListener('change', renderAbrechnung);
 
-/* Schnell-Buttons für Zeitraum-Vorauswahl */
+/* Schnell-Buttons für Zeitraum-Vorauswahl (defensiv: nur wenn Elemente existieren) */
 function setJaPdfRange(von, bis){
-  document.getElementById('jaPdfVon').value = von;
-  document.getElementById('jaPdfBis').value = bis;
+  const v = document.getElementById('jaPdfVon');
+  const b = document.getElementById('jaPdfBis');
+  if(v) v.value = von;
+  if(b) b.value = bis;
 }
-document.getElementById('jaPdfMonat').addEventListener('click', ()=>{
-  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
-  const [y,m] = ym.split('-').map(Number);
-  const von = `${y}-${String(m).padStart(2,'0')}-01`;
-  const last = new Date(y, m, 0).getDate();
-  const bis = `${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
-  setJaPdfRange(von, bis);
-});
-document.getElementById('jaPdfQuartal').addEventListener('click', ()=>{
-  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
-  const [y,m] = ym.split('-').map(Number);
-  const q = Math.floor((m-1)/3); // 0..3
-  const startM = q*3 + 1;
-  const endM = startM + 2;
-  const last = new Date(y, endM, 0).getDate();
-  setJaPdfRange(`${y}-${String(startM).padStart(2,'0')}-01`, `${y}-${String(endM).padStart(2,'0')}-${String(last).padStart(2,'0')}`);
-});
-document.getElementById('jaPdfJahr').addEventListener('click', ()=>{
-  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
-  const y = parseInt(ym.split('-')[0]);
-  setJaPdfRange(`${y}-01-01`, `${y}-12-31`);
-});
+(function bindJaPdfRangeButtons(){
+  const monatBtn = document.getElementById('jaPdfMonat');
+  if(monatBtn) monatBtn.addEventListener('click', ()=>{
+    const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+    const [y,m] = ym.split('-').map(Number);
+    const von = `${y}-${String(m).padStart(2,'0')}-01`;
+    const last = new Date(y, m, 0).getDate();
+    const bis = `${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+    setJaPdfRange(von, bis);
+  });
+  const quartalBtn = document.getElementById('jaPdfQuartal');
+  if(quartalBtn) quartalBtn.addEventListener('click', ()=>{
+    const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+    const [y,m] = ym.split('-').map(Number);
+    const q = Math.floor((m-1)/3);
+    const startM = q*3 + 1;
+    const endM = startM + 2;
+    const last = new Date(y, endM, 0).getDate();
+    setJaPdfRange(`${y}-${String(startM).padStart(2,'0')}-01`, `${y}-${String(endM).padStart(2,'0')}-${String(last).padStart(2,'0')}`);
+  });
+  const jahrBtn = document.getElementById('jaPdfJahr');
+  if(jahrBtn) jahrBtn.addEventListener('click', ()=>{
+    const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+    const y = parseInt(ym.split('-')[0]);
+    setJaPdfRange(`${y}-01-01`, `${y}-12-31`);
+  });
+})();
 
 // Druck/PDF für Jugendamt-Abrechnung mit detaillierten Terminangaben — frei wählbarer Zeitraum
 document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
-  let von = document.getElementById('jaPdfVon').value;
-  let bis = document.getElementById('jaPdfBis').value;
+  const vonEl = document.getElementById('jaPdfVon');
+  const bisEl = document.getElementById('jaPdfBis');
+  let von = vonEl ? vonEl.value : '';
+  let bis = bisEl ? bisEl.value : '';
   // Default: aktueller Abrechnungsmonat
   if(!von || !bis){
     const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
@@ -3488,8 +3497,8 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
     von = `${y}-${String(m).padStart(2,'0')}-01`;
     const last = new Date(y, m, 0).getDate();
     bis = `${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
-    document.getElementById('jaPdfVon').value = von;
-    document.getElementById('jaPdfBis').value = bis;
+    if(vonEl) vonEl.value = von;
+    if(bisEl) bisEl.value = bis;
     toast('Zeitraum auf Abrechnungsmonat gesetzt.');
   }
   if(von > bis){ toast('Zeitraum-Ende liegt vor Zeitraum-Anfang.'); return; }

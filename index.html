@@ -1698,16 +1698,16 @@ function renderEinheiten(){
   if(el) el.addEventListener('change', renderEinheiten);
 });
 document.querySelector('#einheitenTable').addEventListener('click', e=>{
-  // Nachträgliche Übernahme Termin -> Stundendoku
-  const dokuId = e.target.dataset.dokuFromEinheit;
-  if(dokuId){
-    const ein = state.einheiten.find(x => x.id === dokuId);
+  // closest() — funktioniert auch wenn Klick auf Icon/Text innerhalb des Buttons landet
+  const dokuBtn = e.target.closest('[data-doku-from-einheit]');
+  if(dokuBtn){
+    const ein = state.einheiten.find(x => x.id === dokuBtn.dataset.dokuFromEinheit);
     if(ein) prefillDokuFromEinheit(ein);
     return;
   }
-  const editId = e.target.dataset.editEinheit;
-  if(editId){
-    const ein = state.einheiten.find(x => x.id === editId); if(!ein) return;
+  const editBtn = e.target.closest('[data-edit-einheit]');
+  if(editBtn){
+    const ein = state.einheiten.find(x => x.id === editBtn.dataset.editEinheit); if(!ein) return;
     formE.reset();
     Object.entries(ein).forEach(([k,v])=>{
       const el = formE.querySelector(`[name="${k}"]`); if(el) el.value = v == null ? '' : v;
@@ -1717,10 +1717,17 @@ document.querySelector('#einheitenTable').addEventListener('click', e=>{
     toast('Einheit geladen – nach Änderungen speichern');
     return;
   }
-  const delId = e.target.dataset.del; if(!delId) return;
-  if(confirm('Einheit wirklich löschen?')){
-    state.einheiten = state.einheiten.filter(x=>x.id!==delId);
-    save(); renderEinheiten();
+  const delBtn = e.target.closest('[data-del]');
+  if(delBtn){
+    const delId = delBtn.dataset.del;
+    if(!delId) return;
+    const ein = state.einheiten.find(x => x.id === delId);
+    const beschr = ein ? `${ein.patient||'?'} am ${ein.datum||'?'} um ${ein.uhrzeit||'?'}` : delId;
+    if(confirm(`Einheit „${beschr}" wirklich löschen?`)){
+      state.einheiten = state.einheiten.filter(x=>x.id!==delId);
+      save(); renderEinheiten();
+      toast('Einheit gelöscht');
+    }
   }
 });
 

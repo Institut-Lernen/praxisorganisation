@@ -296,6 +296,18 @@
 <!-- Backup-Erinnerungs-Banner (wird per JS gesteuert) -->
 <div id="backupBanner" style="display:none"></div>
 
+<!-- Inline-Modal für Lösch-Bestätigung (unabhängig von confirm() das vom Browser blockiert werden kann) -->
+<div id="deleteModal" class="modal-overlay" style="display:none">
+  <div class="modal-box" style="max-width:420px">
+    <h2 style="margin-top:0;color:var(--bad)">🗑 Wirklich löschen?</h2>
+    <p id="deleteModalText" class="lead" style="margin-bottom:16px"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn ghost" id="deleteCancel">Abbrechen</button>
+      <button type="button" class="btn" id="deleteConfirm" style="background:var(--bad)">Löschen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Inline-Modal für Backup-Restore (Passwort + Modus-Auswahl) -->
 <div id="restoreModal" class="modal-overlay" style="display:none">
   <div class="modal-box">
@@ -1717,14 +1729,31 @@ window.editEinheitById = function(id){
   formE.scrollIntoView({behavior:'smooth', block:'start'});
   toast('Einheit geladen – nach Änderungen speichern');
 };
-window.deleteEinheitById = function(id){
+/* Eigenes Bestätigungs-Modal statt confirm() — letzteres kann der Browser nach
+   "Diese Seite an weiteren Dialogen hindern" stillschweigend blockieren. */
+function confirmDelete(text){
+  return new Promise(resolve=>{
+    const ov = document.getElementById('deleteModal'); if(!ov){ resolve(window.confirm(text)); return; }
+    document.getElementById('deleteModalText').textContent = text;
+    ov.style.display = 'flex';
+    const cleanup = ()=>{
+      ov.style.display = 'none';
+      document.getElementById('deleteCancel').onclick = null;
+      document.getElementById('deleteConfirm').onclick = null;
+    };
+    document.getElementById('deleteCancel').onclick = ()=>{ cleanup(); resolve(false); };
+    document.getElementById('deleteConfirm').onclick = ()=>{ cleanup(); resolve(true); };
+  });
+}
+
+window.deleteEinheitById = async function(id){
   const ein = state.einheiten.find(x => x.id === id);
   const beschr = ein ? `${ein.patient||'?'} am ${ein.datum||'?'} um ${ein.uhrzeit||'?'}` : id;
-  if(confirm(`Einheit „${beschr}" wirklich löschen?`)){
-    state.einheiten = state.einheiten.filter(x=>x.id!==id);
-    save(); renderEinheiten();
-    toast('Einheit gelöscht');
-  }
+  const ok = await confirmDelete(`Einheit „${beschr}" wirklich löschen?`);
+  if(!ok) return;
+  state.einheiten = state.einheiten.filter(x=>x.id!==id);
+  save(); renderEinheiten();
+  toast('Einheit gelöscht');
 };
 
 // Zusätzliche Event-Delegation für "+ Doku anlegen"-Button (kein onclick im Markup, da Funktion oben definiert).

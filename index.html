@@ -195,6 +195,14 @@
   .modal-overlay{position:fixed;inset:0;background:rgba(45,36,41,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:14px}
   .modal-box{background:#fff;border-radius:10px;max-width:480px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto}
   .stack{display:flex;flex-direction:column;gap:8px}
+
+  /* Doku-Sticky-Header: zeigt Klient:in beim Scrollen weiter unten */
+  .doku-sticky{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,#F8F2F3 90%,rgba(248,242,243,0));
+    padding:8px 12px;border-bottom:2px solid var(--primary);margin:-14px -14px 10px;
+    font-weight:600;color:var(--primary);font-size:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
+
+  /* Doku-Aktionsleiste: am unteren Rand bleibend (Mobile) */
+  .doku-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:8px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .right{margin-left:auto}
   .muted{color:var(--muted)}
@@ -220,6 +228,17 @@
   details.stamm-section > div.grid,details.stamm-section > div.check-grid{padding:10px 4px}
   @media(max-width:760px){
     details.stamm-section summary{padding:14px;font-size:14px}
+    /* Doku-Aktionsleiste klebt unten am Bildschirm, immer erreichbar */
+    .doku-actions{position:sticky;bottom:0;left:0;right:0;background:#fff;
+      padding:10px;margin:0 -14px -14px;border-top:2px solid var(--primary);
+      box-shadow:0 -4px 12px rgba(0,0,0,0.06);z-index:40;flex-wrap:wrap}
+    .doku-actions button{flex:1 1 0;min-height:48px;font-size:15px}
+  }
+  /* Express-Modus blendet Beobachtungsraster und Material aus (auf allen Bildschirmen) */
+  body.doku-express-active details.doku-optional{display:none}
+  @media(max-width:760px){
+    /* Mobile: Sticky-Header sichtbar wenn Klient eingetragen */
+    .doku-sticky{font-size:13px}
   }
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .badge-row{display:flex;gap:6px;flex-wrap:wrap}
@@ -714,6 +733,20 @@
     <h2>Stundendokumentation</h2>
     <p class="lead">Fachliche Beobachtung pro Sitzung – ersetzt das Papierformular. Förderschwerpunkt LRS oder Dyskalkulie wählen.</p>
 
+    <!-- Sticky Doku-Kontext-Banner (zeigt Klient + Sitzung beim Scrollen) -->
+    <div id="dokuStickyHeader" class="doku-sticky" hidden>
+      <span id="dokuStickyKlient">—</span>
+      <span class="legend" id="dokuStickyMeta"></span>
+    </div>
+
+    <!-- Modus-Schalter Express/Vollständig (mobil sehr nützlich) -->
+    <div class="row" style="gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+        <input type="checkbox" id="dokuExpressMode" style="width:auto;height:auto;margin:0">
+        <span>⚡ Express-Modus <span class="legend">(nur Pflicht-Felder + Stundenziel + Vereinbarungen)</span></span>
+      </label>
+    </div>
+
     <form id="formDoku" class="stack">
       <div class="grid grid-4">
         <div>
@@ -766,7 +799,7 @@
         </div>
       </details>
 
-      <details>
+      <details class="doku-optional">
         <summary>Materialien &amp; Hausaufgabe Vorstunde</summary>
         <div class="grid grid-2" style="margin-top:8px">
           <div>
@@ -795,12 +828,12 @@
         </div>
       </details>
 
-      <details>
+      <details class="doku-optional">
         <summary>Beobachtungen (Förderschwerpunkt)</summary>
         <div id="obsContainer" style="margin-top:8px"></div>
       </details>
 
-      <details>
+      <details class="doku-optional">
         <summary>Beobachtungen Sensomotorik / Sprache / Psyche</summary>
         <div id="obsCommonContainer" style="margin-top:8px"></div>
       </details>
@@ -833,9 +866,9 @@
         </div>
       </details>
 
-      <div style="display:flex;gap:8px;justify-content:flex-end">
+      <div class="doku-actions">
         <button type="reset" class="btn ghost" id="dokuCancelEdit">Zurücksetzen / Neu</button>
-        <button type="submit" class="btn">Dokumentation speichern</button>
+        <button type="submit" class="btn">💾 Dokumentation speichern</button>
       </div>
       <input type="hidden" name="id">
     </form>
@@ -1931,6 +1964,46 @@ function rebuildObs(){
   document.getElementById('obsCommonContainer').innerHTML = common;
 }
 document.getElementById('schwerpunkt').addEventListener('change', rebuildObs);
+
+/* Express-Modus für Stundendoku — speichert Status in localStorage */
+(function setupDokuExpress(){
+  const cb = document.getElementById('dokuExpressMode'); if(!cb) return;
+  const apply = (on)=> document.body.classList.toggle('doku-express-active', !!on);
+  const saved = localStorage.getItem('praxisorg_doku_express') === '1';
+  cb.checked = saved; apply(saved);
+  cb.addEventListener('change', ()=>{
+    apply(cb.checked);
+    localStorage.setItem('praxisorg_doku_express', cb.checked ? '1' : '0');
+    toast(cb.checked ? 'Express-Modus aktiv: nur Pflicht-Felder + Stundenziel + Vereinbarungen.' : 'Vollständiger Modus aktiv.');
+  });
+})();
+
+/* Sticky-Header der Stundendoku aktualisieren */
+(function setupDokuStickyHeader(){
+  const header = document.getElementById('dokuStickyHeader');
+  const nameEl = document.getElementById('dokuStickyKlient');
+  const metaEl = document.getElementById('dokuStickyMeta');
+  if(!header) return;
+  const formDokuEl = document.getElementById('formDoku');
+  const upd = ()=>{
+    const klient = formDokuEl.querySelector('[name=klient]').value || '';
+    const sitz = formDokuEl.querySelector('[name=sitzungNr]').value || '';
+    const datum = formDokuEl.querySelector('[name=datum]').value || '';
+    if(!klient){ header.hidden = true; return; }
+    header.hidden = false;
+    nameEl.textContent = klient;
+    const parts = [];
+    if(sitz) parts.push(`Sitzung ${sitz}`);
+    if(datum) parts.push(datum.split('-').reverse().join('.'));
+    metaEl.textContent = parts.join(' · ');
+  };
+  ['klient','sitzungNr','datum'].forEach(n=>{
+    const el = formDokuEl.querySelector(`[name=${n}]`);
+    if(el){ el.addEventListener('input', upd); el.addEventListener('change', upd); }
+  });
+  // Auch nach Vorbefüllen aktualisieren
+  setTimeout(upd, 100);
+})();
 
 const formD = document.getElementById('formDoku');
 formD.addEventListener('submit', e=>{

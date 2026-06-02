@@ -69,7 +69,7 @@
   nav.tabs button:hover{color:var(--ink)}
   nav.tabs .tabs-break{flex-basis:100%;height:0;margin:0;padding:0;border:0}
   main{max-width:1200px;margin:16px auto;padding:0 16px 60px}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;margin-bottom:16px;overflow:hidden;min-width:0}
   .card h2{margin:0 0 4px;font-size:18px}
   .card .lead{color:var(--muted);margin:0 0 14px}
   .grid{display:grid;gap:12px}
@@ -164,8 +164,17 @@
     .pill{padding:3px 9px;font-size:11px}
 
     /* Stundendoku Beobachtungs-Tabellen kompakter */
-    .obs-table{font-size:11px}
-    .obs-table th,.obs-table td{padding:3px 4px}
+    .obs-table{font-size:11px;table-layout:fixed;width:100%}
+    .obs-table th,.obs-table td{padding:4px 3px}
+    /* Auf Mobile: Kurzlabels in den Spaltenköpfen, Langlabels ausblenden */
+    .obs-short{display:inline}
+    .obs-long{display:none}
+    /* Bemerkungsspalte schmaler, damit nichts überlaufen */
+    .obs-table td:last-child input{font-size:11px;height:28px;padding:2px 4px}
+    .obs-table th:first-child,.obs-table td:first-child{width:34%;font-size:11px;line-height:1.25}
+    .obs-table th:last-child,.obs-table td:last-child{width:22%}
+    /* Scroll-Container fängt etwaige Überstände ab */
+    .obs-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
   }
 
   /* Kleine Phones (z. B. iPhone SE) */
@@ -215,10 +224,17 @@
   th{background:#fafafa;font-weight:600;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   tr:hover td{background:#fafafa}
   .empty{padding:30px;text-align:center;color:var(--muted)}
-  .obs-table{font-size:12px}
-  .obs-table th{font-size:11px}
-  .obs-table td{padding:5px 6px}
-  .obs-table input[type=radio]{width:auto;margin:0}
+  .obs-table{font-size:12px;border-collapse:collapse;width:100%;table-layout:fixed}
+  .obs-table th{font-size:11px;text-align:center;padding:4px}
+  .obs-table th:first-child,.obs-table td:first-child{text-align:left;width:38%;word-break:break-word}
+  .obs-table td{padding:5px 6px;text-align:center}
+  .obs-table td:last-child{text-align:left;width:22%}
+  .obs-table td:last-child input{width:100%;height:32px;padding:4px 6px;font-size:12px}
+  .obs-table input[type=radio]{width:auto;margin:0;transform:scale(1.1)}
+  .obs-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Kurz-/Langlabel der Spaltenüberschriften */
+  .obs-short{display:none}
+  .obs-long{display:inline}
   .stack{display:flex;flex-direction:column;gap:12px}
   details summary{cursor:pointer;padding:10px 12px;font-weight:600;background:var(--primary-soft);border-radius:8px;color:var(--primary);user-select:none;list-style:none}
   details summary::-webkit-details-marker{display:none}
@@ -1940,15 +1956,17 @@ const obsCols = [
 ];
 
 function renderObsTable(items, prefix){
-  let h = '<table class="obs-table"><thead><tr><th>Bereich</th>';
-  obsCols.forEach(c=> h += `<th title="${c[1]}">${c[1]}</th>`);
+  // Kurzlabels für die Spaltenköpfe (mobil platzsparend)
+  const shortLabels = {unauf:'✓', fb:'FB', dfb:'⚠ DFB', nb:'n.b.'};
+  let h = '<div class="obs-scroll"><table class="obs-table"><thead><tr><th>Bereich</th>';
+  obsCols.forEach(c=> h += `<th title="${c[1]}"><span class="obs-short">${shortLabels[c[0]]||c[1]}</span><span class="obs-long">${c[1]}</span></th>`);
   h += '<th>Bemerkung</th></tr></thead><tbody>';
   items.forEach((label,i)=>{
     h += `<tr><td>${label}</td>`;
     obsCols.forEach(c=> h += `<td><input type="radio" name="${prefix}_${i}" value="${c[0]}"></td>`);
     h += `<td><input name="${prefix}_${i}_b" placeholder="…"></td></tr>`;
   });
-  h += '</tbody></table>';
+  h += '</tbody></table></div>';
   return h;
 }
 

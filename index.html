@@ -1685,13 +1685,21 @@ function renderEinheiten(){
         <td data-label="Status"><span class="pill ${status}">${e.status||''}</span></td>
         <td data-label="Doku">${dokuPill}</td>
         <td>
-          <button type="button" class="btn small ghost" data-edit-einheit="${e.id}" onclick="window.editEinheitById('${e.id}')">Bearbeiten</button>
-          <button type="button" class="btn small ghost" data-del="${e.id}" onclick="window.deleteEinheitById('${e.id}')" style="color:var(--bad);border-color:var(--bad)">Löschen</button>
+          <button type="button" class="btn small ghost js-edit-einheit" data-id="${e.id}">Bearbeiten</button>
+          <button type="button" class="btn small ghost js-del-einheit" data-id="${e.id}" style="color:var(--bad);border-color:var(--bad)">Löschen</button>
         </td>`;
       tb.appendChild(tr);
     });
   }
   document.getElementById('einheitenCount').textContent = `${visible.length} sichtbar / ${state.einheiten.length} gesamt`;
+
+  // Buttons direkt mit Listenern ausstatten — keine Event-Delegation, kein inline onclick
+  document.querySelectorAll('#einheitenTable .js-edit-einheit').forEach(btn=>{
+    btn.addEventListener('click', ()=> window.editEinheitById(btn.dataset.id));
+  });
+  document.querySelectorAll('#einheitenTable .js-del-einheit').forEach(btn=>{
+    btn.addEventListener('click', ()=> window.deleteEinheitById(btn.dataset.id));
+  });
 }
 ['einheitenFilterWoche','einheitenFilterTag'].forEach(id=>{
   const el = document.getElementById(id);

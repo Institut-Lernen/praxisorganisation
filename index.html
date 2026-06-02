@@ -2113,13 +2113,36 @@ function diffStammWJH(stamm, wjh){
 function findMatchingEinheit(doku){
   if(!doku || !doku.datum || !doku.klient) return null;
   const klientLow = doku.klient.toLowerCase().trim();
-  const lastOnly = klientLow.split(',')[0].trim();
-  return state.einheiten.find(e=>{
+  const lastOnly  = klientLow.split(',')[0].trim();
+  // Alle in Frage kommenden Termine am gleichen Tag
+  const sameDay = state.einheiten.filter(e=>{
     if(e.datum !== doku.datum) return false;
     if(!e.patient) return false;
     const p = e.patient.toLowerCase();
     return p === klientLow || (lastOnly && p.includes(lastOnly));
   });
+  if(!sameDay.length) return null;
+  if(sameDay.length === 1) return sameDay[0];
+  // Mehrere Treffer am gleichen Tag (z. B. zwei Termine desselben Kindes):
+  // 1) Exakter Name-Match bevorzugen
+  const exact = sameDay.filter(e => (e.patient||'').toLowerCase().trim() === klientLow);
+  const pool  = exact.length ? exact : sameDay;
+  // 2) Nächstgelegene Uhrzeit
+  if(doku.uhrzeit){
+    const target = doku.uhrzeit.slice(0,5);
+    const byZeit = pool.map(e=>{
+      const u = (e.uhrzeit||'').slice(0,5);
+      const diff = u ? Math.abs(toMin(u)-toMin(target)) : 9999;
+      return {e, diff};
+    }).sort((a,b)=>a.diff-b.diff);
+    return byZeit[0].e;
+  }
+  return pool[0];
+}
+function toMin(hhmm){
+  if(!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return 0;
+  const [h,m] = hhmm.split(':').map(Number);
+  return h*60 + m;
 }
 
 document.getElementById('dokuSort').addEventListener('change', renderDokus);
@@ -2908,25 +2931,30 @@ document.addEventListener('DOMContentLoaded', () => {
       const name = klientFeld.value.toLowerCase().trim();
       if(!name) return;
       const lastName = name.split(',')[0].trim();
-      const stamm = state.stammdaten.find(s => {
+      // Mehrere mögliche Treffer sammeln – bei Mehrdeutigkeit nicht raten
+      const candidates = state.stammdaten.filter(s => {
         const full = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase().trim();
         return full === name || (s.k_nachname || '').toLowerCase().trim() === lastName;
       });
+      // Exakter Match hat Vorrang
+      const exact = candidates.find(s => `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase().trim() === name);
+      const stamm = exact || (candidates.length === 1 ? candidates[0] : null);
       if(stamm){
         const gebKlasseFeld = document.querySelector('#formDoku [name=gebKlasse]');
         if(gebKlasseFeld && !gebKlasseFeld.value) gebKlasseFeld.value = stamm.k_gebKlasse || '';
         const therFeld = document.querySelector('#formDoku [name=therapeut]');
         if(therFeld && !therFeld.value) therFeld.value = stamm.therapeutin || '';
-        // Sitzungsnummer aus letzter Doku des Klienten +1 vorschlagen
-        const sitzungFeld = document.querySelector('#formDoku [name=sitzungNr]');
-        if(sitzungFeld && !sitzungFeld.value){
-          const klientLow = klientFeld.value.toLowerCase().trim();
-          const lastSitzung = state.dokus
-            .filter(d => (d.klient||'').toLowerCase().trim() === klientLow)
-            .map(d => parseInt(d.sitzungNr) || 0)
-            .reduce((max, n) => Math.max(max, n), 0);
-          sitzungFeld.value = lastSitzung + 1;
-        }
+      }
+      // Sitzungsnummer: nur bei exaktem Klient:in-Match autofüllen
+      // (sonst landen Geschwister-Sitzungen in einem Topf)
+      const sitzungFeld = document.querySelector('#formDoku [name=sitzungNr]');
+      if(sitzungFeld && !sitzungFeld.value){
+        const klientLow = klientFeld.value.toLowerCase().trim();
+        const lastSitzung = state.dokus
+          .filter(d => (d.klient||'').toLowerCase().trim() === klientLow)
+          .map(d => parseInt(d.sitzungNr) || 0)
+          .reduce((max, n) => Math.max(max, n), 0);
+        if(lastSitzung > 0 || stamm) sitzungFeld.value = lastSitzung + 1;
       }
     });
   }
@@ -3644,15 +3672,26 @@ function renderUebersicht(){
         : (e.status==='Abgesagt durch Therapeut:in' ? 'bad'
         : (e.status==='Abgesagt durch Eltern' ? 'warn' : 'warn'));
       const tr = document.createElement('tr');
-      // Patient-Match in Stammdaten suchen
-      const matchedStamm = state.stammdaten.find(s=>{
-        if(!e.patient) return false;
-        const fullName = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase();
+      // Patient-Match in Stammdaten suchen — mehrdeutige Treffer freundlich auflösen
+      let matchedStamm = null;
+      let mehrereTreffer = false;
+      if(e.patient){
         const p = e.patient.toLowerCase();
-        return p === fullName || (s.k_nachname && p.includes(s.k_nachname.toLowerCase()));
-      });
+        const candidates = state.stammdaten.filter(s=>{
+          const fullName = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase();
+          return p === fullName || (s.k_nachname && p.includes(s.k_nachname.toLowerCase()));
+        });
+        if(candidates.length === 1){
+          matchedStamm = candidates[0];
+        } else if(candidates.length > 1){
+          // Exakte Volltext-Übereinstimmung bevorzugen
+          const exakt = candidates.find(s => `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase() === p);
+          matchedStamm = exakt || candidates[0];
+          mehrereTreffer = !exakt;
+        }
+      }
       const patientCell = matchedStamm
-        ? `<a href="#" data-open-stamm="${matchedStamm.id}" style="color:var(--primary);text-decoration:underline" title="Stammdaten von ${matchedStamm.k_nachname||''}, ${matchedStamm.k_vorname||''} öffnen">${e.patient||''}</a>${matchedStamm.vertragstyp?`<br><span class="legend">${matchedStamm.vertragstyp}</span>`:''}`
+        ? `<a href="#" data-open-stamm="${matchedStamm.id}" style="color:var(--primary);text-decoration:underline" title="Stammdaten von ${matchedStamm.k_nachname||''}, ${matchedStamm.k_vorname||''} öffnen">${e.patient||''}</a>${matchedStamm.vertragstyp?`<br><span class="legend">${matchedStamm.vertragstyp}${mehrereTreffer?' · mehrere Klient:innen mit diesem Kürzel':''}</span>`:''}`
         : `${e.patient||''} <span class="legend" title="Keine Stammdaten gefunden">⚠ kein Stamm</span>`;
       tr.innerHTML = `
         <td>${e.wochentag||''} ${e.datum||''}</td>

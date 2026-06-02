@@ -1004,10 +1004,23 @@
         </tfoot>
       </table>
     </div>
+    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:10px;padding:10px;background:#F8F2F3;border-radius:6px;align-items:end">
+      <div>
+        <label style="margin-bottom:4px">PDF-Zeitraum von</label>
+        <input type="date" id="jaPdfVon" style="width:auto">
+      </div>
+      <div>
+        <label style="margin-bottom:4px">PDF-Zeitraum bis</label>
+        <input type="date" id="jaPdfBis" style="width:auto">
+      </div>
+      <button class="btn ghost small" id="jaPdfMonat" type="button" title="Setzt von+bis auf den gewählten Abrechnungsmonat">Aus Abrechnungsmonat</button>
+      <button class="btn ghost small" id="jaPdfQuartal" type="button" title="Quartal des Abrechnungsmonats">Aktuelles Quartal</button>
+      <button class="btn ghost small" id="jaPdfJahr" type="button" title="Jahr des Abrechnungsmonats">Jahr</button>
+    </div>
     <div class="abr-btn-row">
       <button class="btn abr-action" data-export="abr-ja">⤓ Excel: Jugendamt-Sammelaufstellung</button>
       <button class="btn abr-action" data-export="abr-ja-detail">⤓ Excel: Jugendamt-Einzelpositionen</button>
-      <button class="btn abr-action" id="btnAbrJaPdf">🖨 PDF-Druck (mit Terminangaben)</button>
+      <button class="btn abr-action" id="btnAbrJaPdf">🖨 PDF-Druck (gewählter Zeitraum)</button>
     </div>
   </div>
 
@@ -3436,9 +3449,60 @@ function renderAbrechnung(){
 
 document.getElementById('abrMonth').addEventListener('change', renderAbrechnung);
 
-// Druck/PDF für Jugendamt-Abrechnung mit detaillierten Terminangaben
-document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
+/* Schnell-Buttons für Zeitraum-Vorauswahl */
+function setJaPdfRange(von, bis){
+  document.getElementById('jaPdfVon').value = von;
+  document.getElementById('jaPdfBis').value = bis;
+}
+document.getElementById('jaPdfMonat').addEventListener('click', ()=>{
   const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+  const [y,m] = ym.split('-').map(Number);
+  const von = `${y}-${String(m).padStart(2,'0')}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const bis = `${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+  setJaPdfRange(von, bis);
+});
+document.getElementById('jaPdfQuartal').addEventListener('click', ()=>{
+  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+  const [y,m] = ym.split('-').map(Number);
+  const q = Math.floor((m-1)/3); // 0..3
+  const startM = q*3 + 1;
+  const endM = startM + 2;
+  const last = new Date(y, endM, 0).getDate();
+  setJaPdfRange(`${y}-${String(startM).padStart(2,'0')}-01`, `${y}-${String(endM).padStart(2,'0')}-${String(last).padStart(2,'0')}`);
+});
+document.getElementById('jaPdfJahr').addEventListener('click', ()=>{
+  const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+  const y = parseInt(ym.split('-')[0]);
+  setJaPdfRange(`${y}-01-01`, `${y}-12-31`);
+});
+
+// Druck/PDF für Jugendamt-Abrechnung mit detaillierten Terminangaben — frei wählbarer Zeitraum
+document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
+  let von = document.getElementById('jaPdfVon').value;
+  let bis = document.getElementById('jaPdfBis').value;
+  // Default: aktueller Abrechnungsmonat
+  if(!von || !bis){
+    const ym = document.getElementById('abrMonth').value || defaultAbrMonth();
+    const [y,m] = ym.split('-').map(Number);
+    von = `${y}-${String(m).padStart(2,'0')}-01`;
+    const last = new Date(y, m, 0).getDate();
+    bis = `${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+    document.getElementById('jaPdfVon').value = von;
+    document.getElementById('jaPdfBis').value = bis;
+    toast('Zeitraum auf Abrechnungsmonat gesetzt.');
+  }
+  if(von > bis){ toast('Zeitraum-Ende liegt vor Zeitraum-Anfang.'); return; }
+
+  // Helfer: Einheiten einer Stammdatensatz-Person im gewählten Zeitraum
+  function einheitenInZeitraum(s){
+    return einheitenFor(s).filter(e=>{
+      if(!e.datum) return false;
+      if(e.datum < von || e.datum > bis) return false;
+      return STATUS_ZAEHLT.includes(e.status);
+    });
+  }
+
   const klienten = state.stammdaten.filter(canSeeStamm).filter(isJugendamtKlient);
   let blocks = '';
   let summaryRows = '';
@@ -3461,7 +3525,7 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
   };
 
   klienten.forEach(s => {
-    const ein = einheitenInMonat(s, ym).slice().sort((a,b)=> (a.datum||'').localeCompare(b.datum||''));
+    const ein = einheitenInZeitraum(s).slice().sort((a,b)=> (a.datum||'').localeCompare(b.datum||''));
     if(!ein.length) return;
     const std = Math.round(ein.reduce((sum, e) => sum + dauerInUE(e.dauer || 45), 0) * 10) / 10;
     sumStdGesamt += std;
@@ -3497,7 +3561,7 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
         <div class="meta-row">
           ${s.geburtsdatum?`Geb.: ${fmtDe(s.geburtsdatum)} &nbsp;·&nbsp; `:''}
           ${s.diagnose?`Diagnose: ${s.diagnose} &nbsp;·&nbsp; `:''}
-          Termine im Monat: <strong>${ein.length}</strong> &nbsp;·&nbsp;
+          Termine im Zeitraum: <strong>${ein.length}</strong> &nbsp;·&nbsp;
           Therapieeinheiten: <strong>${std}</strong>
         </div>
         <table class="detail">
@@ -3514,8 +3578,9 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
       </div>`;
   });
 
+  const zeitraumLabel = `${fmtDe(von)} – ${fmtDe(bis)}`;
   const win = window.open('', '_blank', 'width=900,height=1000');
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Jugendamt-Abrechnung ${ym}</title>
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Jugendamt-Abrechnung ${zeitraumLabel}</title>
     <style>
       body{font-family:Arial,sans-serif;margin:24px;color:#2D2429}
       h1{color:#9E4047;border-bottom:2px solid #9E4047;padding-bottom:8px;margin-top:0}
@@ -3534,8 +3599,11 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
       @page { size: A4; margin: 12mm }
     </style></head><body>
     <button onclick="window.print()" style="float:right;padding:8px 14px;background:#9E4047;color:white;border:0;border-radius:6px;cursor:pointer">🖨 Drucken / als PDF</button>
-    <h1>Jugendamt-Abrechnung ${ym}</h1>
-    <div class="meta">Institut Lernen · Erstellt: ${new Date().toLocaleString('de-DE')}</div>
+    <h1>Jugendamt-Abrechnung</h1>
+    <div class="meta">
+      <strong>Zeitraum:</strong> ${zeitraumLabel} &nbsp;·&nbsp;
+      Institut Lernen &nbsp;·&nbsp; Erstellt: ${new Date().toLocaleString('de-DE')}
+    </div>
 
     <div class="summary">
       <table>
@@ -3544,7 +3612,7 @@ document.getElementById('btnAbrJaPdf').addEventListener('click', () => {
           <th style="text-align:center">Termine</th>
           <th style="text-align:right">Therapieeinheiten</th>
         </tr></thead>
-        <tbody>${summaryRows||'<tr><td colspan="4" style="text-align:center;color:#7A6D6D">Keine abrechenbaren Einheiten im gewählten Monat</td></tr>'}</tbody>
+        <tbody>${summaryRows||'<tr><td colspan="4" style="text-align:center;color:#7A6D6D">Keine abrechenbaren Einheiten im gewählten Zeitraum</td></tr>'}</tbody>
         <tfoot><tr>
           <td colspan="2">Gesamt</td>
           <td style="text-align:center">${sumEinheitenGesamt}</td>

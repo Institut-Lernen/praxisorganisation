@@ -161,6 +161,10 @@
   /* Abrechnungs-Buttons einheitlich */
   .abr-btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
   .abr-btn-row .abr-action{flex:1 1 220px;min-height:44px;padding:10px 14px;font-size:14px;font-weight:500;justify-content:center}
+  /* Inline-Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(45,36,41,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:14px}
+  .modal-box{background:#fff;border-radius:10px;max-width:480px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto}
+  .stack{display:flex;flex-direction:column;gap:8px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .right{margin-left:auto}
   .muted{color:var(--muted)}
@@ -291,6 +295,49 @@
 
 <!-- Backup-Erinnerungs-Banner (wird per JS gesteuert) -->
 <div id="backupBanner" style="display:none"></div>
+
+<!-- Inline-Modal für Backup-Restore (Passwort + Modus-Auswahl) -->
+<div id="restoreModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2 style="margin-top:0;color:var(--primary)">📥 Backup-JSON laden</h2>
+    <p class="lead" id="restoreModalSubtitle">Wähle, wie die Daten geladen werden sollen.</p>
+
+    <div id="restorePwBlock" style="display:none;margin-bottom:14px">
+      <label>Passwort des verschlüsselten Backups</label>
+      <div style="display:flex;gap:6px;align-items:stretch">
+        <input type="password" id="restorePw" placeholder="Passwort" autocomplete="off" style="flex:1">
+        <button type="button" class="btn ghost small" id="restorePwShow">👁</button>
+      </div>
+      <div class="legend" id="restorePwErr" style="color:var(--bad);display:none;margin-top:4px">Entschlüsselung fehlgeschlagen – falsches Passwort?</div>
+    </div>
+
+    <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:14px">
+      <legend style="padding:0 6px;font-weight:600;color:var(--primary)">Import-Modus</legend>
+      <div class="stack">
+        <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+          <input type="radio" name="restoreMode" value="merge" checked style="margin-top:4px">
+          <span><strong>Zusammenführen</strong> <span class="legend">(Empfehlung)</span><br>
+            <span class="legend">Neue Einträge ergänzen, vorhandene bleiben unverändert.</span></span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+          <input type="radio" name="restoreMode" value="update" style="margin-top:4px">
+          <span><strong>Aktualisieren</strong><br>
+            <span class="legend">Bei gleicher ID gewinnt die Backup-Version.</span></span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+          <input type="radio" name="restoreMode" value="replace" style="margin-top:4px">
+          <span><strong>Komplett ersetzen</strong> <span class="pill bad">Vorsicht</span><br>
+            <span class="legend">Alle aktuellen Daten werden verworfen.</span></span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn ghost" id="restoreCancel">Abbrechen</button>
+      <button type="button" class="btn" id="restoreConfirm">Backup laden</button>
+    </div>
+  </div>
+</div>
 
 <!-- ====================== TAB: ERFASSEN ====================== -->
 <section data-panel="erfassen">
@@ -4663,8 +4710,10 @@ async function decryptBackup(envelope, passphrase){
 }
 
 document.getElementById('btnBackup').addEventListener('click', async ()=>{
-  const pw  = document.getElementById('backupPw').value;
-  const pw2 = document.getElementById('backupPw2').value;
+  const pwEl  = document.getElementById('backupPw');
+  const pw2El = document.getElementById('backupPw2');
+  const pw  = pwEl  ? pwEl.value  : '';
+  const pw2 = pw2El ? pw2El.value : '';
   const dataJson = JSON.stringify(state, null, 2);
   let blob, dateipart = 'praxisorg_backup_'+new Date().toISOString().slice(0,10);
 
@@ -4682,7 +4731,8 @@ document.getElementById('btnBackup').addEventListener('click', async ()=>{
       return;
     }
   } else {
-    if(!confirm('Backup OHNE Passwort speichern?\n\nDie Datei ist dann lesbar im Klartext.\nFür Daten mit Klient:innenbezug Passwort empfohlen.')) return;
+    // Ohne Passwort: direkt herunterladen – ohne lästige Sicherheitsabfrage.
+    // Die Empfehlung steht bereits im Lead-Text der Karte.
     blob = new Blob([dataJson], {type:'application/json'});
     toast('Backup gespeichert (unverschlüsselt) ✓');
   }
@@ -4692,8 +4742,8 @@ document.getElementById('btnBackup').addEventListener('click', async ()=>{
   a.download = dateipart + '.json';
   a.click();
   // Passwortfelder leeren (nicht im DOM stehen lassen)
-  document.getElementById('backupPw').value = '';
-  document.getElementById('backupPw2').value = '';
+  if(pwEl)  pwEl.value  = '';
+  if(pw2El) pw2El.value = '';
   // Zeitstempel speichern und Banner aktualisieren
   localStorage.setItem('praxisorg_last_backup', new Date().toISOString());
   renderBackupBanner();
@@ -4840,35 +4890,110 @@ function importBackupData(parsed){
   return true;
 }
 
-document.getElementById('restoreFile').addEventListener('change', e=>{
-  const f = e.target.files[0]; if(!f) return;
-  const r = new FileReader();
-  r.onload = async ()=>{
-    let raw;
-    try{ raw = JSON.parse(r.result); }
-    catch(_){ toast('Datei nicht lesbar'); return; }
+/* Modal-Steuerung: zeigt Inline-Dialog, gibt Promise mit dem Ergebnis zurück.
+   Statt prompt()/confirm() – funktioniert zuverlässig in allen Browsern. */
+function openRestoreModal(isEncrypted){
+  return new Promise(resolve=>{
+    const ov = document.getElementById('restoreModal');
+    const pwBlock = document.getElementById('restorePwBlock');
+    const pwInp = document.getElementById('restorePw');
+    const pwErr = document.getElementById('restorePwErr');
+    const subtitle = document.getElementById('restoreModalSubtitle');
+    pwBlock.style.display = isEncrypted ? '' : 'none';
+    pwErr.style.display = 'none';
+    pwInp.value = '';
+    pwInp.type = 'password';
+    document.querySelector('input[name=restoreMode][value=merge]').checked = true;
+    subtitle.textContent = isEncrypted
+      ? 'Backup ist verschlüsselt. Bitte Passwort eingeben und Import-Modus wählen.'
+      : 'Backup wurde geladen. Wähle, wie die Daten verarbeitet werden sollen.';
+    ov.style.display = 'flex';
+    setTimeout(()=> (isEncrypted?pwInp:ov).focus(), 50);
 
-    // Verschlüsseltes Backup erkannt?
-    if(raw && raw.format === 'praxisorg-encrypted-v1'){
-      const pw = prompt('Backup ist verschlüsselt. Bitte Passwort eingeben:');
-      if(!pw){ toast('Abgebrochen'); return; }
-      try{
-        const plain = await decryptBackup(raw, pw);
-        const parsed = JSON.parse(plain);
-        importBackupData(parsed);
-      }catch(err){
-        console.error(err);
-        toast('Entschlüsselung fehlgeschlagen – falsches Passwort?');
-      }
+    const cleanup = ()=>{
+      ov.style.display = 'none';
+      document.getElementById('restoreCancel').onclick = null;
+      document.getElementById('restoreConfirm').onclick = null;
+      document.getElementById('restorePwShow').onclick = null;
+      pwInp.onkeydown = null;
+    };
+    document.getElementById('restoreCancel').onclick = ()=>{ cleanup(); resolve(null); };
+    document.getElementById('restorePwShow').onclick = ()=>{
+      pwInp.type = pwInp.type === 'password' ? 'text' : 'password';
+    };
+    document.getElementById('restoreConfirm').onclick = ()=>{
+      const mode = document.querySelector('input[name=restoreMode]:checked').value;
+      const pw = isEncrypted ? pwInp.value : '';
+      if(isEncrypted && !pw){ pwErr.textContent = 'Bitte Passwort eingeben.'; pwErr.style.display='block'; return; }
+      cleanup();
+      resolve({mode, pw});
+    };
+    pwInp.onkeydown = (ev)=>{ if(ev.key === 'Enter'){ ev.preventDefault(); document.getElementById('restoreConfirm').click(); } };
+  });
+}
+
+document.getElementById('restoreFile').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  let raw;
+  try{
+    const text = await f.text();
+    raw = JSON.parse(text);
+  } catch(_){
+    toast('Datei nicht lesbar – ist es ein JSON-Backup?');
+    e.target.value = '';
+    return;
+  }
+  const isEncrypted = raw && raw.format === 'praxisorg-encrypted-v1';
+
+  // Modal öffnen, Antwort holen
+  let result = await openRestoreModal(isEncrypted);
+  // Bei verschlüsseltem Backup ggf. wiederholt fragen, bis Passwort stimmt oder Abbruch
+  while(result && isEncrypted){
+    try{
+      const plain = await decryptBackup(raw, result.pw);
+      const parsed = JSON.parse(plain);
+      finalizeImport(parsed, result.mode);
       e.target.value = '';
       return;
+    }catch(err){
+      console.error(err);
+      // Fehler-Hinweis anzeigen und erneut fragen
+      const ov = document.getElementById('restoreModal');
+      const pwErr = document.getElementById('restorePwErr');
+      ov.style.display = 'flex';
+      pwErr.textContent = 'Entschlüsselung fehlgeschlagen – falsches Passwort?';
+      pwErr.style.display = 'block';
+      result = await openRestoreModal(true);
     }
-    // Klartext-Backup
-    importBackupData(raw);
-    e.target.value = '';
-  };
-  r.readAsText(f);
+  }
+  if(!result){ e.target.value = ''; return; }
+  // Klartext-Backup
+  finalizeImport(raw, result.mode);
+  e.target.value = '';
 });
+
+/* Tatsächliche Übernahme der Backup-Daten in den State. */
+function finalizeImport(parsed, mode){
+  if(mode === 'replace'){
+    if(!confirm('Wirklich ALLE aktuellen Daten verwerfen und nur das Backup laden?\n\nDies kann nicht rückgängig gemacht werden.')) return;
+    state = Object.assign(defaultState(), parsed);
+    state.user = state.user || (parsed.user || {role:'leitung', name:''});
+    save(); renderAll();
+    toast('Backup komplett übernommen ✓');
+    return;
+  }
+  const {state: merged, stats} = mergeStates(state, parsed, mode);
+  state = merged;
+  save(); renderAll();
+  const summary = Object.entries(stats).map(([k,v])=> {
+    const teile = [];
+    if(v.added) teile.push(`${v.added} neu`);
+    if(v.updated) teile.push(`${v.updated} aktualisiert`);
+    if(v.kept) teile.push(`${v.kept} unverändert`);
+    return teile.length ? `${k}: ${teile.join(', ')}` : null;
+  }).filter(Boolean).join(' · ');
+  toast(`Backup ${mode==='merge'?'zusammengeführt':'aktualisiert'} ✓ ${summary || '(keine neuen Einträge)'}`);
+}
 document.getElementById('btnDemo').addEventListener('click', ()=>{
   if(!confirm('Demodaten zusätzlich anlegen?')) return;
   const today = new Date(); today.setHours(0,0,0,0);

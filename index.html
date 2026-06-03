@@ -746,6 +746,35 @@
       </table>
     </div>
   </div>
+
+  <!-- Mein Backup — nur für Therapeut:innen und Honorarkräfte sichtbar -->
+  <div class="card" id="meinBackupCard" style="display:none">
+    <h2>💾 Mein Backup sichern</h2>
+    <p class="lead">
+      Erstelle regelmäßig (am besten täglich) ein Backup deiner Daten. Die Datei wird mit
+      <strong>AES-256 verschlüsselt</strong>, wenn du ein Passwort vergibst. Reiche das Backup
+      zusammen mit dem Passwort am Monatsende an die Leitung weiter — so können deine erfassten
+      Stunden in die Abrechnung einfließen.
+    </p>
+    <div class="grid grid-2" style="margin-bottom:10px">
+      <div>
+        <label>Backup-Passwort (optional, empfohlen)</label>
+        <input type="password" id="meinBackupPw" placeholder="leer = unverschlüsseltes Backup" autocomplete="new-password">
+      </div>
+      <div>
+        <label>Passwort bestätigen</label>
+        <input type="password" id="meinBackupPw2" placeholder="erneut eingeben" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="row" style="gap:10px;flex-wrap:wrap">
+      <button class="btn" id="btnMeinBackup" type="button">⤓ Backup-JSON herunterladen</button>
+      <span class="legend" id="meinBackupInfo"></span>
+    </div>
+    <div class="legend" style="margin-top:8px">
+      Tipp: Speichere die Datei auf dem Praxis-NAS im Ordner „Backups/Praxisorg" oder schicke sie
+      verschlüsselt per E-Mail an die Leitung.
+    </div>
+  </div>
 </section>
 
 <!-- ====================== TAB: DOKUMENTATION ====================== -->
@@ -1272,7 +1301,7 @@
       – damit mehrere Therapeut:innen gleichzeitig arbeiten können.
     </div>
     <div class="grid grid-2">
-      <button class="btn" data-export="lt-stunden">⤓ Hohmann LT-Stunden (Ju + P)</button>
+      <button class="btn" data-export="lt-stunden">⤓ LT-Stunden (Ju + P)</button>
       <button class="btn" data-export="lt-honorar">⤓ LT-Stunden Honorarkräfte (Privat)</button>
       <button class="btn" data-export="warteliste">⤓ Warteliste &amp; Erstkontakt</button>
       <button class="btn" data-export="wjh">⤓ Wirtschaftliche Jugendhilfe</button>
@@ -1590,6 +1619,10 @@ function applyRoleTabVisibility(){
   if(config) config.style.display = istLeitung ? '' : 'none';
   const rollenPwBox = document.getElementById('rollenPwCard');
   if(rollenPwBox) rollenPwBox.style.display = istLeitung ? '' : 'none';
+  // "Mein Backup"-Karte nur für Nicht-Leitungs-Rollen sichtbar (Leitung hat die volle
+  // Backup-Sektion im Excel-Export-Tab)
+  const meinBackup = document.getElementById('meinBackupCard');
+  if(meinBackup) meinBackup.style.display = istLeitung ? 'none' : '';
   // Wenn aktueller Tab nicht erlaubt: zum ersten erlaubten wechseln
   const activeBtn = document.querySelector('#tabs button.active');
   if(activeBtn && !allowed.includes(activeBtn.dataset.tab)){
@@ -4474,7 +4507,7 @@ function exportLT(){
   ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(d=>{
     XLSX.utils.book_append_sheet(wb, styleSheet(buildLTSheet(d, false, 'festangestellt'), {headerRows:2}), 'LT '+d);
   });
-  XLSX.writeFile(wb, 'Hohmann LT-Stunden.xlsx');
+  XLSX.writeFile(wb, 'LT-Stunden (Ju+P).xlsx');
 }
 
 function exportHonorar(){
@@ -4925,6 +4958,51 @@ async function decryptBackup(envelope, passphrase){
   return new TextDecoder().decode(pt);
 }
 
+/* Mein-Backup-Button für Therapeut:innen/Honorarkräfte
+   Gleiche Logik wie btnBackup, aber liest aus den Stammdaten-Feldern. */
+(function setupMeinBackup(){
+  const btn = document.getElementById('btnMeinBackup');
+  if(!btn) return;
+  btn.addEventListener('click', async ()=>{
+    const pwEl  = document.getElementById('meinBackupPw');
+    const pw2El = document.getElementById('meinBackupPw2');
+    const infoEl = document.getElementById('meinBackupInfo');
+    const pw  = pwEl  ? pwEl.value  : '';
+    const pw2 = pw2El ? pw2El.value : '';
+    const dataJson = JSON.stringify(state, null, 2);
+    let blob, dateipart = 'praxisorg_backup_'+new Date().toISOString().slice(0,10);
+    const userKuerzel = (state.user.name||'').split(',')[0].trim().split(' ').pop();
+    if(userKuerzel) dateipart += '_' + userKuerzel.replace(/[^a-zA-Z0-9]/g,'');
+
+    if(pw || pw2){
+      if(pw !== pw2){ toast('Passwörter stimmen nicht überein.'); return; }
+      if(pw.length < 8){ toast('Bitte Passwort mit min. 8 Zeichen wählen.'); return; }
+      try{
+        const env = await encryptBackup(dataJson, pw);
+        blob = new Blob([JSON.stringify(env, null, 2)], {type:'application/json'});
+        dateipart += '.enc';
+        toast('Verschlüsseltes Backup gespeichert ✓');
+      }catch(err){
+        console.error(err);
+        toast('Verschlüsselung fehlgeschlagen: '+err.message);
+        return;
+      }
+    } else {
+      blob = new Blob([dataJson], {type:'application/json'});
+      toast('Backup gespeichert (unverschlüsselt) ✓');
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = dateipart + '.json';
+    a.click();
+    if(pwEl)  pwEl.value  = '';
+    if(pw2El) pw2El.value = '';
+    localStorage.setItem('praxisorg_last_backup', new Date().toISOString());
+    renderBackupBanner();
+    if(infoEl) infoEl.textContent = 'Backup erstellt am ' + new Date().toLocaleString('de-DE');
+  });
+})();
+
 document.getElementById('btnBackup').addEventListener('click', async ()=>{
   const pwEl  = document.getElementById('backupPw');
   const pw2El = document.getElementById('backupPw2');
@@ -5003,10 +5081,20 @@ function renderBackupBanner(){
       </div>
     </div>`;
   document.getElementById('backupBannerGo').onclick = ()=>{
-    // Zum Excel-Export-Tab springen und Backup auslösen
-    document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='export'));
-    document.querySelectorAll('section[data-panel]').forEach(s=>s.classList.toggle('active', s.dataset.panel==='export'));
-    document.getElementById('btnBackup').click();
+    // Leitung: Wechsel zum Excel-Export-Tab und dort Backup auslösen
+    // Therapeut:in/Honorarkraft: Direkter Trigger des Mein-Backup-Buttons
+    if(state.user.role === 'leitung'){
+      document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='export'));
+      document.querySelectorAll('section[data-panel]').forEach(s=>s.hidden = s.dataset.panel !== 'export');
+      const btn = document.getElementById('btnBackup');
+      if(btn) btn.click();
+    } else {
+      // Wechsel zum Stammdaten-Tab (wo das Mein-Backup-Card sitzt) und Backup auslösen
+      document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='stammdaten'));
+      document.querySelectorAll('section[data-panel]').forEach(s=>s.hidden = s.dataset.panel !== 'stammdaten');
+      const btn = document.getElementById('btnMeinBackup');
+      if(btn) btn.click();
+    }
   };
   document.getElementById('backupBannerDismiss').onclick = ()=>{
     localStorage.setItem('praxisorg_backup_banner_dismissed', new Date().toISOString());

@@ -205,6 +205,10 @@
   .modal-box{background:#fff;border-radius:10px;max-width:480px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto}
   .stack{display:flex;flex-direction:column;gap:8px}
 
+  /* WJH-Tabelle: Monatsspalten standardmäßig ausgeblendet (zu viele Spalten) */
+  #wjhTable .wjh-month{display:none}
+  body.wjh-show-months #wjhTable .wjh-month{display:table-cell}
+
   /* Doku-Sticky-Header: zeigt Klient:in beim Scrollen weiter unten */
   .doku-sticky{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,#F8F2F3 90%,rgba(248,242,243,0));
     padding:8px 12px;border-bottom:2px solid var(--primary);margin:-14px -14px 10px;
@@ -1121,18 +1125,25 @@
   </div>
 
   <div class="card">
-    <div class="row">
+    <div class="row" style="flex-wrap:wrap;gap:10px">
       <h2 style="margin:0">Aktenübersicht – Stunden je Monat</h2>
       <input type="search" id="wjhSearch" placeholder="🔍 Suche Name, Aktenzeichen …" style="max-width:340px;margin-left:auto">
     </div>
-    <p class="muted" style="margin-top:6px">Stunden werden aus durchgeführten Therapieeinheiten mit Finanzierung „Jugendamt (WJH)" berechnet (Patient-Match über Name).</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
+      <label style="margin:0;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="wjhShowMonths" style="width:auto;height:auto;margin:0">
+        Monatsspalten anzeigen <span class="legend">(12 Spalten Jan–Dez)</span>
+      </label>
+      <span class="right legend" id="wjhCount" style="margin-left:auto"></span>
+    </div>
+    <p class="muted" style="margin-top:6px">Stunden werden aus durchgeführten Therapieeinheiten mit Finanzierung „Jugendamt (WJH)" berechnet (Patient-Match über Aktenzeichen oder exakten Namen).</p>
     <div style="overflow-x:auto">
       <table id="wjhTable" class="responsive">
         <thead><tr>
           <th>A</th><th>Name</th><th>Aktenzeichen</th>
-          <th>Bewilligungs­zeitraum</th><th>Therapieeinh./Wo</th><th>Bewilligt gesamt</th>
-          <th>Jan</th><th>Feb</th><th>Mär</th><th>Apr</th><th>Mai</th><th>Jun</th>
-          <th>Jul</th><th>Aug</th><th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th>
+          <th>Bewilligungs­zeitraum</th><th>UE/Wo</th><th>Bewilligt</th>
+          <th class="wjh-month">Jan</th><th class="wjh-month">Feb</th><th class="wjh-month">Mär</th><th class="wjh-month">Apr</th><th class="wjh-month">Mai</th><th class="wjh-month">Jun</th>
+          <th class="wjh-month">Jul</th><th class="wjh-month">Aug</th><th class="wjh-month">Sep</th><th class="wjh-month">Okt</th><th class="wjh-month">Nov</th><th class="wjh-month">Dez</th>
           <th>Σ verbraucht</th><th>Rest</th><th></th>
         </tr></thead>
         <tbody></tbody>
@@ -1314,6 +1325,39 @@
       <button class="btn" data-export="stammdaten">⤓ Stammdaten (Kontaktdaten)</button>
       <button class="btn" data-export="abonnement">⤓ Abonnement Lerntherapie (Privat-Verträge)</button>
       <button class="btn ghost" data-export="all" style="grid-column:1/-1">⤓ Alle sechs Dateien (Sammel-Export)</button>
+    </div>
+  </div>
+
+  <!-- Excel-Import-Karte für Erstnutzung / Datenmigration aus bestehenden Excel-Vorlagen -->
+  <div class="card" id="excelImportCard">
+    <h2>📥 Excel-Daten importieren</h2>
+    <p class="lead">
+      Für die <strong>Erstnutzung</strong> oder zur Übernahme von Daten aus deinen bestehenden Excel-Vorlagen.
+      Akzeptiert die Original-Vorlagen-Struktur (Stammdaten, WJH-Aktenübersicht, LT-Stunden).
+      Vorschau wird gezeigt — du bestätigst, was übernommen wird.
+    </p>
+    <div class="grid grid-2" style="margin-bottom:10px">
+      <div>
+        <label>Datentyp wählen</label>
+        <select id="excelImportType">
+          <option value="stammdaten">Stammdaten (Kontaktdaten)</option>
+          <option value="wjh">Wirtschaftliche Jugendhilfe (WJH-Akten)</option>
+          <option value="lt_stunden">LT-Stunden (Therapieeinheiten je Wochentag)</option>
+        </select>
+      </div>
+      <div>
+        <label>Excel-Datei (.xlsx)</label>
+        <input type="file" id="excelImportFile" accept=".xlsx,.xls">
+      </div>
+    </div>
+    <div id="excelImportPreview"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn ghost" id="btnExcelImportReset" type="button">Zurücksetzen</button>
+      <button class="btn" id="btnExcelImportConfirm" type="button" disabled>📥 Übernehmen</button>
+    </div>
+    <div class="legend" style="margin-top:8px">
+      Hinweis: Vorhandene Datensätze mit gleichem Aktenzeichen werden <strong>nicht überschrieben</strong>.
+      Neue Einträge werden ergänzt. So kannst du den Import gefahrlos auch mehrfach durchführen.
     </div>
   </div>
 
@@ -2390,12 +2434,17 @@ document.getElementById('btnVbReset').addEventListener('click', ()=>{
 function findMatchingWJH(stamm){
   if(!stamm) return null;
   const az = (stamm.az || '').trim().toLowerCase();
+  // 1) Aktenzeichen ist der eindeutigste Match — immer bevorzugen
   if(az){
     const m = state.wjh.find(w => (w.az||'').toLowerCase().trim() === az);
     if(m) return m;
   }
-  const last = (stamm.k_nachname || '').toLowerCase().trim();
-  if(last) return state.wjh.find(w => (w.name||'').toLowerCase().includes(last));
+  // 2) Fallback per Name nur bei EXAKTEM Voll-Match (Nachname, Vorname)
+  const fullName = `${stamm.k_nachname||''}, ${stamm.k_vorname||''}`.toLowerCase().trim();
+  if(fullName && fullName !== ',') {
+    const m = state.wjh.find(w => (w.name||'').toLowerCase().trim() === fullName);
+    if(m) return m;
+  }
   return null;
 }
 
@@ -2403,12 +2452,20 @@ function findMatchingWJH(stamm){
 function findMatchingStamm(wjh){
   if(!wjh) return null;
   const az = (wjh.az || '').trim().toLowerCase();
+  // 1) Aktenzeichen-Match - eindeutig
   if(az){
     const m = state.stammdaten.find(s => (s.az||'').toLowerCase().trim() === az);
     if(m) return m;
   }
-  const lastName = (wjh.name||'').toLowerCase().split(',')[0].trim();
-  if(lastName) return state.stammdaten.find(s => (s.k_nachname||'').toLowerCase().includes(lastName));
+  // 2) Fallback nur bei EXAKTEM Voll-Match
+  const wjhName = (wjh.name||'').toLowerCase().trim();
+  if(wjhName){
+    const m = state.stammdaten.find(s => {
+      const sName = `${s.k_nachname||''}, ${s.k_vorname||''}`.toLowerCase().trim();
+      return sName === wjhName;
+    });
+    if(m) return m;
+  }
   return null;
 }
 
@@ -3559,7 +3616,7 @@ function renderWJH(){
       <td>${zeitraum}</td>
       <td>${w.stunden_pro_woche || ''}</td>
       <td>${bewilligt !== null ? '<strong>'+bewilligt+'</strong>' : '<span class="legend">–</span>'}</td>` +
-      m.map(x=>`<td>${x?x.toFixed(1):''}</td>`).join('') +
+      m.map(x=>`<td class="wjh-month">${x?x.toFixed(1):''}</td>`).join('') +
       `<td><strong>${verbraucht.toFixed(1)}</strong></td>
        <td>${rest !== null ? '<span class="pill '+restCls+'">'+rest.toFixed(1)+'</span>' : '<span class="legend">–</span>'}</td>
        <td>
@@ -3569,7 +3626,21 @@ function renderWJH(){
        </td>`;
     tb.appendChild(tr);
   });
+  const countEl = document.getElementById('wjhCount');
+  if(countEl) countEl.textContent = `${visible.length} sichtbar / ${state.wjh.length} gesamt`;
 }
+
+/* Monatsspalten umschalten */
+(function setupWjhMonthToggle(){
+  const cb = document.getElementById('wjhShowMonths'); if(!cb) return;
+  const apply = (on)=> document.body.classList.toggle('wjh-show-months', !!on);
+  const saved = localStorage.getItem('praxisorg_wjh_months') === '1';
+  cb.checked = saved; apply(saved);
+  cb.addEventListener('change', ()=>{
+    apply(cb.checked);
+    localStorage.setItem('praxisorg_wjh_months', cb.checked ? '1' : '0');
+  });
+})();
 // Such-Filter: bei Eingabe neu rendern
 const wjhSearchEl = document.getElementById('wjhSearch');
 if(wjhSearchEl){
@@ -4974,6 +5045,218 @@ async function decryptBackup(envelope, passphrase){
   const pt   = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
   return new TextDecoder().decode(pt);
 }
+
+/* ====================================================
+   Excel-Import-Funktion
+   - Liest .xlsx mit SheetJS ein, zeigt Vorschau
+   - Drei Typen: Stammdaten, WJH, LT-Stunden
+   - Übernahme im Merge-Modus (vorhandene IDs bleiben unberührt)
+   ==================================================== */
+(function setupExcelImport(){
+  const typeSel = document.getElementById('excelImportType');
+  const fileInp = document.getElementById('excelImportFile');
+  const previewBox = document.getElementById('excelImportPreview');
+  const btnConfirm = document.getElementById('btnExcelImportConfirm');
+  const btnReset   = document.getElementById('btnExcelImportReset');
+  if(!typeSel || !fileInp) return;
+
+  let parsedRows = [];     // geparste Zeilen aus dem Excel
+  let importType = null;   // 'stammdaten' | 'wjh' | 'lt_stunden'
+  let mappedData = [];     // umgewandelte App-Objekte
+
+  function resetImport(){
+    fileInp.value = '';
+    parsedRows = []; mappedData = []; importType = null;
+    previewBox.innerHTML = '';
+    btnConfirm.disabled = true;
+  }
+  btnReset.addEventListener('click', resetImport);
+
+  fileInp.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    importType = typeSel.value;
+    try{
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      parsedRows = XLSX.utils.sheet_to_json(firstSheet, {defval:'', raw:false});
+      processRows();
+    }catch(err){
+      console.error(err);
+      previewBox.innerHTML = `<div class="info" style="border-left:4px solid var(--bad);background:#fde7ea;color:#6F2A2F">
+        Fehler beim Einlesen: ${err.message}</div>`;
+      btnConfirm.disabled = true;
+    }
+  });
+
+  function processRows(){
+    if(!parsedRows.length){
+      previewBox.innerHTML = '<div class="legend">Datei enthält keine Zeilen.</div>';
+      btnConfirm.disabled = true; return;
+    }
+    if(importType === 'stammdaten') mappedData = mapStammdaten(parsedRows);
+    else if(importType === 'wjh')   mappedData = mapWJH(parsedRows);
+    else if(importType === 'lt_stunden') mappedData = mapLTStunden(parsedRows);
+    renderPreview();
+  }
+
+  /* --- Mappers: Excel-Spalten -> App-Objekte ---------------- */
+  function getCol(row, ...candidates){
+    for(const c of candidates){
+      for(const k of Object.keys(row)){
+        if(k.toLowerCase().trim() === c.toLowerCase().trim()) return String(row[k]||'').trim();
+      }
+    }
+    return '';
+  }
+  function mapStammdaten(rows){
+    return rows.map(r => ({
+      id: uid(),
+      k_nachname: getCol(r,'Nachname Kind','Nachname/K','Nachname','Kind Nachname'),
+      k_vorname:  getCol(r,'Vorname Kind','Name/K','Vorname','Kind Vorname'),
+      k_gebKlasse:getCol(r,'Geb-Datum/Klasse','Geburtsdatum','Klasse','Geb./Klasse'),
+      az:         getCol(r,'Aktenzeichen','AZ','Akte'),
+      vertragstyp:getCol(r,'Vertragstyp','Vertrag') || 'Privat offen',
+      vertragsbeginn: parseDate(getCol(r,'Vertragsbeginn','Beginn')),
+      vertragsende:   parseDate(getCol(r,'Vertragsende','Ende')),
+      stundensatz:   getCol(r,'Stundensatz','Satz'),
+      monatspauschale:getCol(r,'Monatspauschale','Pauschale'),
+      kontingent:    getCol(r,'Kontingent','Stunden'),
+      v_name:    getCol(r,'Name Vater','Vater Name','Name/V'),
+      v_adresse: getCol(r,'Adresse Vater','Vater Adresse','Adresse/V'),
+      v_email:   getCol(r,'E-Mail Vater','Vater E-Mail','E-Mail/V','Email/V'),
+      v_telefon: getCol(r,'Telefon Vater','Vater Telefon','Telefon/V'),
+      m_name:    getCol(r,'Name Mutter','Mutter Name','Name/M'),
+      m_adresse: getCol(r,'Adresse Mutter','Mutter Adresse','Adresse/M'),
+      m_email:   getCol(r,'E-Mail Mutter','Mutter E-Mail','E-Mail/M','Email/M'),
+      m_telefon: getCol(r,'Telefon Mutter','Mutter Telefon','Telefon/M'),
+      schule:    getCol(r,'Schule'),
+      klasse:    getCol(r,'Klasse'),
+      diagnose:  getCol(r,'Diagnose'),
+      therapeutin: getCol(r,'Therapeutin','Therapeut:in','Therapeut'),
+      dsgvo:     getCol(r,'DSGVO') || 'ausstehend',
+      vertrag:   getCol(r,'Vertrag-Status','Status Vertrag') || 'ausstehend',
+      schweigepflicht: getCol(r,'Schweigepflicht','Schweigepflichtsentbindung') || 'ausstehend',
+    })).filter(s => s.k_nachname || s.k_vorname);
+  }
+  function mapWJH(rows){
+    return rows.map(r => ({
+      id: uid(),
+      alphabet: getCol(r,'Alphabet','A'),
+      name:     getCol(r,'Name','Klient:in'),
+      az:       getCol(r,'Aktenzeichen','AZ','Akte'),
+      bewilligung_von: parseDate(getCol(r,'Bewilligung von','Beginn','Von')),
+      bewilligung_bis: parseDate(getCol(r,'Bewilligung bis','Ende','Bis')),
+      stunden_pro_woche: getCol(r,'Therapieeinheiten/Woche','UE/Wo','Stunden/Woche'),
+      bewilligte_einheiten_gesamt: getCol(r,'Bewilligte Therapieeinheiten gesamt','Bewilligt gesamt','Bewilligt'),
+      genehmigung: getCol(r,'Genehmigung','Bemerkung'),
+    })).filter(w => w.name || w.az);
+  }
+  function mapLTStunden(rows){
+    // Erwartet: Spalten Datum, Uhrzeit, Patient, Therapeut:in, Dauer, Status, Leistung, Finanzierung
+    return rows.map(r => {
+      const datum = parseDate(getCol(r,'Datum','Date'));
+      const dauer = parseInt(getCol(r,'Dauer','Minuten','Min.','Min'),10) || 45;
+      return {
+        id: uid(),
+        datum: datum,
+        wochentag: datum ? autoWeekday(datum) : getCol(r,'Wochentag','Tag'),
+        uhrzeit: getCol(r,'Uhrzeit','Zeit','Beginn'),
+        patient: getCol(r,'Patient','Klient:in','Klient','Name'),
+        therapeut: getCol(r,'Therapeut:in','Therapeutin','Therapeut'),
+        dauer: dauer,
+        leistung: getCol(r,'Leistung','Lerntherapie') || 'Lerntherapie LRS',
+        form: getCol(r,'Form') || 'Einzel',
+        finanzierung: getCol(r,'Finanzierung','Bezahlung') || 'Privat',
+        status: getCol(r,'Status') || 'Durchgeführt',
+        notiz: getCol(r,'Notiz','Bemerkung'),
+      };
+    }).filter(e => e.datum && (e.patient || e.therapeut));
+  }
+  function parseDate(s){
+    if(!s) return '';
+    // dd.mm.yyyy oder yyyy-mm-dd oder Excel-Serien-Zahl
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+    if(m){
+      const y = m[3].length===2 ? '20'+m[3] : m[3];
+      return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    }
+    if(/^\d+$/.test(s)){
+      // Excel-Datumsserie (1900-Basis)
+      const n = parseInt(s,10);
+      const d = new Date((n - 25569) * 86400 * 1000);
+      if(!isNaN(d)) return d.toISOString().slice(0,10);
+    }
+    return s;
+  }
+
+  /* --- Vorschau ----------------------------------------- */
+  function renderPreview(){
+    if(!mappedData.length){
+      previewBox.innerHTML = `<div class="info" style="border-left:4px solid var(--warn);background:#fef9e7">
+        Keine importierbaren Zeilen erkannt. Prüfe die Spaltenüberschriften deiner Excel-Datei.</div>`;
+      btnConfirm.disabled = true; return;
+    }
+    const fields = importType === 'stammdaten'
+      ? [['k_nachname','Nachname'],['k_vorname','Vorname'],['az','Aktenzeichen'],['vertragstyp','Vertragstyp'],['therapeutin','Therapeut:in']]
+      : importType === 'wjh'
+      ? [['az','AZ'],['name','Name'],['bewilligung_von','Von'],['bewilligung_bis','Bis'],['stunden_pro_woche','UE/Wo']]
+      : [['datum','Datum'],['uhrzeit','Uhrzeit'],['patient','Patient'],['therapeut','Therapeut:in'],['dauer','Dauer'],['status','Status']];
+    const previewRows = mappedData.slice(0, 10);
+    const head = fields.map(f => `<th>${f[1]}</th>`).join('');
+    const body = previewRows.map(d => '<tr>' + fields.map(f => `<td>${(d[f[0]]||'').toString().slice(0,40)}</td>`).join('') + '</tr>').join('');
+    const dupesInfo = checkDuplicates();
+    previewBox.innerHTML = `
+      <div class="info" style="border-left:4px solid var(--good);background:#e8f3ec;margin-bottom:8px">
+        <strong>${mappedData.length} Zeilen erkannt</strong>${dupesInfo ? ' · '+dupesInfo : ''}.
+        Vorschau der ersten ${previewRows.length}:
+      </div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="background:var(--primary-soft);color:var(--primary)">${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+    btnConfirm.disabled = false;
+  }
+  function checkDuplicates(){
+    if(importType === 'stammdaten'){
+      const dup = mappedData.filter(d => d.az && state.stammdaten.some(s => (s.az||'').trim() === d.az.trim())).length;
+      return dup ? `<span style="color:var(--warn)">${dup} mit bereits vorhandenem Aktenzeichen — werden übersprungen</span>` : '';
+    }
+    if(importType === 'wjh'){
+      const dup = mappedData.filter(d => d.az && state.wjh.some(w => (w.az||'').trim() === d.az.trim())).length;
+      return dup ? `<span style="color:var(--warn)">${dup} mit bereits vorhandenem Aktenzeichen — werden übersprungen</span>` : '';
+    }
+    return '';
+  }
+
+  /* --- Import durchführen ------------------------------- */
+  btnConfirm.addEventListener('click', ()=>{
+    if(!mappedData.length) return;
+    let added = 0, skipped = 0;
+    if(importType === 'stammdaten'){
+      const existingAZ = new Set(state.stammdaten.map(s => (s.az||'').trim()).filter(Boolean));
+      mappedData.forEach(d => {
+        if(d.az && existingAZ.has(d.az.trim())){ skipped++; return; }
+        state.stammdaten.push(d); added++;
+      });
+    } else if(importType === 'wjh'){
+      const existingAZ = new Set(state.wjh.map(w => (w.az||'').trim()).filter(Boolean));
+      mappedData.forEach(d => {
+        if(d.az && existingAZ.has(d.az.trim())){ skipped++; return; }
+        state.wjh.push(d); added++;
+      });
+    } else if(importType === 'lt_stunden'){
+      // Termine: keine eindeutigen Schlüssel, ALLE übernehmen
+      mappedData.forEach(d => { state.einheiten.push(d); added++; });
+    }
+    save(); renderAll();
+    toast(`Import erfolgreich: ${added} neue Einträge, ${skipped} übersprungen.`);
+    resetImport();
+  });
+})();
 
 /* Mein-Backup-Button für Therapeut:innen/Honorarkräfte
    Gleiche Logik wie btnBackup, aber liest aus den Stammdaten-Feldern. */
